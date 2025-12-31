@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "205492068242",
+    "firebase_url": "https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "feedy-cebf6",
+    "storage_bucket": "feedy-cebf6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:205492068242:android:3f19b78355a9760f4eeb4b",
+        "android_client_info": {
+          "package_name": "com.example.feedy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_sncSPLcLduT2VlAFBt0j6PUC8yHkoL8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

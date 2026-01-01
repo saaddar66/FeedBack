@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/feedback_provider.dart';
 
 /// Screen for submitting new feedback
@@ -67,6 +68,8 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
           ),
         );
         _resetForm();
+        // Navigate to WelcomeScreen after successful submission
+        context.go('/');
       } else {
         // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -92,6 +95,17 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Submit Feedback'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+          tooltip: 'Back',
+        ),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -156,35 +170,30 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // Rating buttons (1-5)
+                  // Rating emoji buttons (1-5)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: List.generate(5, (index) {
                       final rating = index + 1;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedRating = rating),
-                        child: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            // Highlight selected rating with color
-                            color: _selectedRating == rating
-                                ? _getRatingColor(rating)
-                                : Colors.grey[300],
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              rating.toString(),
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: _selectedRating == rating
-                                    ? Colors.white
-                                    : Colors.grey[700],
-                              ),
+                      final isSelected = _selectedRating == rating;
+                      final emoji = _getRatingEmoji(rating);
+                      
+                      return AnimatedScale(
+                        scale: isSelected ? 1.2 : 1.0,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        child: IconButton(
+                          onPressed: () => setState(() => _selectedRating = rating),
+                          icon: Text(
+                            emoji,
+                            style: TextStyle(
+                              fontSize: 40,
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.grey.shade400,
                             ),
                           ),
+                          tooltip: _getRatingLabel(rating),
                         ),
                       );
                     }),
@@ -250,6 +259,25 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
         ),
       ),
     );
+  }
+
+  /// Returns an emoji based on rating value
+  /// 1=😠, 2=☹️, 3=😐, 4=🙂, 5=🤩
+  String _getRatingEmoji(int rating) {
+    switch (rating) {
+      case 1:
+        return '😠';
+      case 2:
+        return '☹️';
+      case 3:
+        return '😐';
+      case 4:
+        return '🙂';
+      case 5:
+        return '🤩';
+      default:
+        return '😐';
+    }
   }
 
   /// Returns a color based on rating value

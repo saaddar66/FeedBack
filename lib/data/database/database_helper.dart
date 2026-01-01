@@ -80,23 +80,33 @@ class DatabaseHelper {
   /// Retrieves all feedback entries with optional filters
   /// Filters are applied client-side after fetching data
   /// Returns list sorted by creation date (newest first)
+  /// [limit] parameter limits the number of entries fetched (default: 100)
   Future<List<FeedbackModel>> getAllFeedback({
     int? minRating,
     int? maxRating,
     DateTime? startDate,
     DateTime? endDate,
+    int limit = 100,
   }) async {
     List<FeedbackModel> feedbackList = [];
 
     if (_useMock) {
         feedbackList = List.from(_mockData);
+        // Sort by date (newest first) and apply limit
+        feedbackList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        if (feedbackList.length > limit) {
+          feedbackList = feedbackList.take(limit).toList();
+        }
     } else {
         if (_databaseRef == null) await initDatabase();
         // Recurse if init switched to mock, otherwise continue with firebase
         if (_useMock) return getAllFeedback(minRating: minRating, maxRating: maxRating, startDate: startDate, endDate: endDate);
 
         try {
-            final snapshot = await _databaseRef!.get();
+            // Use limitToLast to fetch only the most recent entries
+            // Order by created_at timestamp to get newest first
+            final query = _databaseRef!.orderByChild('created_at').limitToLast(limit);
+            final snapshot = await query.get();
             if (snapshot.exists && snapshot.value != null) {
                 final Map<dynamic, dynamic> data = snapshot.value as Map<dynamic, dynamic>;
                 for (var entry in data.entries) {

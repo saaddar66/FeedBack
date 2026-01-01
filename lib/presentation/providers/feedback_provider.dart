@@ -1,6 +1,70 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/models/feedback_model.dart';
+
+/// Top-level function for computing statistics in a background isolate
+/// This function must be top-level or static to work with compute()
+Map<String, dynamic> calculateStats(List<Map<String, dynamic>> feedbackJsonList) {
+  // Convert JSON back to FeedbackModel objects
+  final feedbackList = feedbackJsonList.map((json) {
+    return FeedbackModel(
+      id: json['id'] as String?,
+      name: json['name'] as String?,
+      email: json['email'] as String?,
+      rating: json['rating'] as int,
+      comments: json['comments'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }).toList();
+
+  // Calculate Total Count
+  final totalFeedback = feedbackList.length;
+
+  // Calculate Average Rating
+  double averageRating = 0.0;
+  if (feedbackList.isNotEmpty) {
+    final sum = feedbackList.fold(0, (prev, element) => prev + element.rating);
+    averageRating = sum / feedbackList.length;
+  }
+
+  // Calculate Rating Distribution
+  final Map<int, int> ratingDistribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+  for (var f in feedbackList) {
+    ratingDistribution[f.rating] = (ratingDistribution[f.rating] ?? 0) + 1;
+  }
+
+  // Calculate Trends Data (Group by YYYY-MM-DD)
+  final Map<String, List<FeedbackModel>> groupedByDate = {};
+  for (var f in feedbackList) {
+    final dateKey = f.createdAt.toIso8601String().substring(0, 10);
+    groupedByDate.putIfAbsent(dateKey, () => []).add(f);
+  }
+
+  final List<Map<String, dynamic>> trendsData = [];
+  groupedByDate.forEach((date, feedbacks) {
+    final count = feedbacks.length;
+    final sum = feedbacks.fold(0, (prev, element) => prev + element.rating);
+    final avgRating = sum / count;
+    
+    trendsData.add({
+      'date': date,
+      'count': count,
+      'avg_rating': avgRating,
+    });
+  });
+  
+  // Sort trends by date
+  trendsData.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+
+  // Return results as a map
+  return {
+    'totalFeedback': totalFeedback,
+    'averageRating': averageRating,
+    'ratingDistribution': ratingDistribution,
+    'trendsData': trendsData,
+  };
+}
 
 /// State management provider for feedback data
 /// Manages all feedback-related state and business logic
@@ -40,6 +104,7 @@ class FeedbackProvider with ChangeNotifier {
   /// Loads all feedback data from the repository
   /// Applies current filters and updates all state variables
   /// Notifies listeners when loading starts and completes
+  /// Uses compute() to run calculations in a background isolate
   Future<void> loadFeedback() async {
     _isLoading = true;
     notifyListeners();
@@ -53,47 +118,24 @@ class FeedbackProvider with ChangeNotifier {
         endDate: _endDate,
       );
 
-      // 2. In-Memory Calculations (Avoids 4 extra network requests)
-      
-      // Calculate Total Count
-      _totalFeedback = _feedbackList.length;
+      // 2. Convert FeedbackModel list to JSON for serialization
+      final feedbackJsonList = _feedbackList.map((f) => {
+        'id': f.id,
+        'name': f.name,
+        'email': f.email,
+        'rating': f.rating,
+        'comments': f.comments,
+        'createdAt': f.createdAt.toIso8601String(),
+      }).toList();
 
-      // Calculate Average Rating
-      if (_feedbackList.isEmpty) {
-        _averageRating = 0.0;
-      } else {
-        final sum = _feedbackList.fold(0, (prev, element) => prev + element.rating);
-        _averageRating = sum / _feedbackList.length;
-      }
+      // 3. Run calculations in background isolate using compute()
+      final stats = await compute(calculateStats, feedbackJsonList);
 
-      // Calculate Rating Distribution
-      _ratingDistribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-      for (var f in _feedbackList) {
-        _ratingDistribution[f.rating] = (_ratingDistribution[f.rating] ?? 0) + 1;
-      }
-
-      // Calculate Trends Data (Group by YYYY-MM-DD)
-      final Map<String, List<FeedbackModel>> groupedByDate = {};
-      for (var f in _feedbackList) {
-        final dateKey = f.createdAt.toIso8601String().substring(0, 10);
-        groupedByDate.putIfAbsent(dateKey, () => []).add(f);
-      }
-
-      _trendsData = [];
-      groupedByDate.forEach((date, feedbacks) {
-        final count = feedbacks.length;
-        final sum = feedbacks.fold(0, (prev, element) => prev + element.rating);
-        final avgRating = sum / count;
-        
-        _trendsData.add({
-          'date': date,
-          'count': count,
-          'avg_rating': avgRating,
-        });
-      });
-      
-      // Sort trends by date
-      _trendsData.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+      // 4. Update state with calculated results
+      _totalFeedback = stats['totalFeedback'] as int;
+      _averageRating = stats['averageRating'] as double;
+      _ratingDistribution = Map<int, int>.from(stats['ratingDistribution'] as Map);
+      _trendsData = List<Map<String, dynamic>>.from(stats['trendsData'] as List);
 
     } catch (e) {
       debugPrint('Error loading feedback: $e');

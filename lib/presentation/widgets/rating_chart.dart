@@ -53,7 +53,7 @@ class RatingChart extends StatelessWidget {
                       getTooltipColor: (_) => Colors.grey[800]!,
                     ),
                   ),
-                  // Configure axis titles
+                  // Configure axis titles - hide top, right, and left
                   titlesData: FlTitlesData(
                     show: true,
                     // Bottom axis shows rating numbers (1-5)
@@ -68,22 +68,15 @@ class RatingChart extends StatelessWidget {
                         },
                       ),
                     ),
-                    // Left axis shows count values
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        getTitlesWidget: (value, meta) {
-                          return Text(
-                            value.toInt().toString(),
-                            style: const TextStyle(fontSize: 12),
-                          );
-                        },
-                      ),
+                    // Hide left axis
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
                     ),
+                    // Hide top axis
                     topTitles: const AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
                     ),
+                    // Hide right axis
                     rightTitles: const AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
                     ),
@@ -94,6 +87,7 @@ class RatingChart extends StatelessWidget {
                     drawVerticalLine: false,
                     horizontalInterval: 1,
                   ),
+                  // Hide border
                   borderData: FlBorderData(show: false),
                   // Generate bars for each rating (1-5)
                   barGroups: List.generate(5, (index) {
@@ -107,7 +101,7 @@ class RatingChart extends StatelessWidget {
                           color: _getRatingColor(rating), // Color based on rating
                           width: 20,
                           borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4),
+                            top: Radius.circular(6),
                           ),
                         ),
                       ],

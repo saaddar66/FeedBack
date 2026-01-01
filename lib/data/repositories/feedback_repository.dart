@@ -30,17 +30,20 @@ class FeedbackRepository {
 
   /// Retrieves all feedback entries with optional filtering
   /// Supports filtering by rating range and date range
+  /// [limit] parameter limits the number of entries fetched (default: 100)
   Future<List<FeedbackModel>> getFeedback({
     int? minRating,
     int? maxRating,
     DateTime? startDate,
     DateTime? endDate,
+    int limit = 100,
   }) async {
     return await _databaseHelper.getAllFeedback(
       minRating: minRating,
       maxRating: maxRating,
       startDate: startDate,
       endDate: endDate,
+      limit: limit,
     );
   }
 

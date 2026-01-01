@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../providers/feedback_provider.dart';
 import '../widgets/rating_chart.dart';
 import '../widgets/trends_chart.dart';
 import '../widgets/filter_dialog.dart';
+import '../../data/models/feedback_model.dart';
 
 /// Dashboard screen displaying feedback statistics, charts, and recent feedback
 /// Shows total feedback count, average rating, rating distribution chart,
@@ -32,28 +34,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Feedback Dashboard'),
         actions: [
+          // Configuration button to navigate to configuration screen
+          IconButton(
+            icon: const Icon(Icons.settings_applications),
+            onPressed: () => context.go('/config'),
+            tooltip: 'Survey Configuration',
+          ),
+          // Settings button to navigate to settings screen
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => context.go('/settings'),
+            tooltip: 'Settings',
+          ),
           // Filter button to open filter dialog
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: () => _showFilterDialog(context),
+            tooltip: 'Filter',
           ),
           // Refresh button to reload feedback data
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => context.read<FeedbackProvider>().loadFeedback(),
+            tooltip: 'Refresh',
+          ),
+          // Logout button
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => context.go('/'),
+            tooltip: 'Logout',
           ),
         ],
       ),
-      // Consumer widget rebuilds when FeedbackProvider state changes
-      body: Consumer<FeedbackProvider>(
-        builder: (context, provider, child) {
+      // Use Selector for loading state to minimize rebuilds
+      body: Selector<FeedbackProvider, bool>(
+        selector: (_, provider) => provider.isLoading,
+        builder: (context, isLoading, child) {
           // Show loading indicator while data is being fetched
-          if (provider.isLoading) {
+          if (isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
 
           return RefreshIndicator(
-            onRefresh: () => provider.loadFeedback(),
+            onRefresh: () => context.read<FeedbackProvider>().loadFeedback(),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isDesktop = constraints.maxWidth >= 900;
@@ -64,39 +87,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // S1: Stats Cards
-                      _buildStatsCards(provider),
+                      // S1: Stats Cards - Only rebuilds when totalFeedback or averageRating changes
+                      _buildStatsCardsSelector(),
                       const SizedBox(height: 24),
                       
                       // S2: Filters
-                      _buildFiltersInfo(provider),
-                      if (provider.selectedMinRating != null || provider.startDate != null)
-                        const SizedBox(height: 24),
+                      _buildFiltersInfoSelector(),
                       
-                      // S3: Charts Area
+                      // S3: Charts Area - Only rebuilds when ratingDistribution or trendsData changes
                       if (isDesktop)
                         // Desktop: Side-by-Side Charts
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: RatingChart(ratingDistribution: provider.ratingDistribution)),
-                            const SizedBox(width: 24),
-                            Expanded(child: TrendsChart(trendsData: provider.trendsData)),
-                          ],
-                        )
+                        _buildChartsRowSelector()
                       else
                         // Tablet/Mobile: Stacked Charts
-                        Column(
-                          children: [
-                            RatingChart(ratingDistribution: provider.ratingDistribution),
-                            const SizedBox(height: 24),
-                            TrendsChart(trendsData: provider.trendsData),
-                          ],
-                        ),
-                        
+                        _buildChartsColumnSelector(),
+                      
                       const SizedBox(height: 24),
                       // S4: Recent Feedback
-                      _buildRecentFeedback(provider),
+                      _buildRecentFeedbackSelector(),
                     ],
                   ),
                 );
@@ -108,29 +116,106 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Builds the statistics cards row
-  /// Displays total feedback count and average rating in two side-by-side cards
-  Widget _buildStatsCards(FeedbackProvider provider) {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            title: 'Total Feedback',
-            value: provider.totalFeedback.toString(),
-            icon: Icons.feedback,
-            color: Colors.blue,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            title: 'Avg Rating',
-            value: provider.averageRating.toStringAsFixed(1),
-            icon: Icons.star,
-            color: Colors.amber,
-          ),
-        ),
-      ],
+  /// Builds the statistics cards row using Selector
+  /// Only rebuilds when totalFeedback or averageRating changes
+  Widget _buildStatsCardsSelector() {
+    return Selector<FeedbackProvider, Map<String, dynamic>>(
+      selector: (_, provider) => {
+        'totalFeedback': provider.totalFeedback,
+        'averageRating': provider.averageRating,
+      },
+      builder: (context, stats, child) {
+        return Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                title: 'Total Feedback',
+                value: stats['totalFeedback'].toString(),
+                icon: Icons.feedback,
+                color: Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                title: 'Avg Rating',
+                value: (stats['averageRating'] as double).toStringAsFixed(1),
+                icon: Icons.star,
+                color: Colors.amber,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Builds the charts row for desktop view using Selector
+  Widget _buildChartsRowSelector() {
+    return Selector<FeedbackProvider, Map<String, dynamic>>(
+      selector: (_, provider) => {
+        'ratingDistribution': provider.ratingDistribution,
+        'trendsData': provider.trendsData,
+      },
+      builder: (context, data, child) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: RatingChart(
+                ratingDistribution: data['ratingDistribution'] as Map<int, int>,
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: TrendsChart(
+                trendsData: data['trendsData'] as List<Map<String, dynamic>>,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Builds the charts column for mobile/tablet view using Selector
+  Widget _buildChartsColumnSelector() {
+    return Selector<FeedbackProvider, Map<String, dynamic>>(
+      selector: (_, provider) => {
+        'ratingDistribution': provider.ratingDistribution,
+        'trendsData': provider.trendsData,
+      },
+      builder: (context, data, child) {
+        return Column(
+          children: [
+            RatingChart(
+              ratingDistribution: data['ratingDistribution'] as Map<int, int>,
+            ),
+            const SizedBox(height: 24),
+            TrendsChart(
+              trendsData: data['trendsData'] as List<Map<String, dynamic>>,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Builds the filter information card using Selector
+  /// Shows active filters and provides a button to clear them
+  /// Only displays if at least one filter is active
+  Widget _buildFiltersInfoSelector() {
+    return Selector<FeedbackProvider, Map<String, dynamic>>(
+      selector: (_, provider) => {
+        'selectedMinRating': provider.selectedMinRating,
+        'selectedMaxRating': provider.selectedMaxRating,
+        'startDate': provider.startDate,
+        'endDate': provider.endDate,
+      },
+      builder: (context, filters, child) {
+        final provider = context.read<FeedbackProvider>();
+        return _buildFiltersInfo(provider);
+      },
     );
   }
 
@@ -195,6 +280,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return parts.join(' • ');
   }
 
+  /// Builds the recent feedback list widget using Selector
+  /// Only rebuilds when feedbackList changes
+  Widget _buildRecentFeedbackSelector() {
+    return Selector<FeedbackProvider, List<FeedbackModel>>(
+      selector: (_, provider) => provider.feedbackList,
+      builder: (context, feedbackList, child) {
+        final provider = context.read<FeedbackProvider>();
+        return _buildRecentFeedback(provider);
+      },
+    );
+  }
+
   /// Builds the recent feedback list widget
   /// Shows up to 5 most recent feedback entries
   /// Displays rating, name (or Anonymous), comments preview, and date
@@ -231,13 +328,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             itemCount: provider.feedbackList.length > 5 ? 5 : provider.feedbackList.length,
             itemBuilder: (context, index) {
               final feedback = provider.feedbackList[index];
+              final heroTag = 'feedback_${feedback.id ?? index}';
               return ListTile(
                 // Circular avatar with rating number, color-coded by rating value
-                leading: CircleAvatar(
-                  backgroundColor: _getRatingColor(feedback.rating),
-                  child: Text(
-                    feedback.rating.toString(),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                leading: Hero(
+                  tag: heroTag,
+                  child: CircleAvatar(
+                    backgroundColor: _getRatingColor(feedback.rating),
+                    child: Text(
+                      feedback.rating.toString(),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
                 // Name or "Anonymous" if no name provided
@@ -282,7 +383,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 /// Reusable stat card widget
-/// Displays an icon, value, and title in a card format
+/// Displays an icon, value, and title in a card format with glassmorphic gradient
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
@@ -298,7 +399,22 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    // Determine gradient colors based on card type
+    final isTotalFeedback = icon == Icons.feedback;
+    final gradientColors = isTotalFeedback
+        ? [Colors.blue.shade50, Colors.white]
+        : [Colors.amber.shade50, Colors.white];
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradientColors,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200, width: 1),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

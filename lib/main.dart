@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:feedy/config/database_config.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:feedy/data/repositories/feedback_repository.dart';
 import 'package:feedy/data/database/database_helper.dart';
 import 'package:feedy/presentation/providers/feedback_provider.dart';
+import 'package:feedy/presentation/screens/welcome_screen.dart';
+import 'package:feedy/presentation/screens/login_screen.dart';
+import 'package:feedy/presentation/screens/signup_screen.dart';
 import 'package:feedy/presentation/screens/dashboard_screen.dart';
 import 'package:feedy/presentation/screens/feedback_form_screen.dart';
+import 'package:feedy/presentation/screens/configuration_screen.dart';
+import 'package:feedy/presentation/screens/settings_screen.dart';
 // Import firebase_options.dart after running: flutterfire configure
 import 'firebase_options.dart';
 
@@ -15,6 +22,9 @@ import 'firebase_options.dart';
 void main() async {
   // Ensure Flutter bindings are initialized before async operations
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize database factory based on platform (Web, Desktop, Mobile)
+  configureDatabase();
   
   // Initialize Firebase
   // After running 'flutterfire configure', uncomment the line below and comment the defaultOptions line
@@ -49,24 +59,39 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Create router configuration with URL-based routes
     final router = GoRouter(
-      initialLocation: '/dashboard', // Default route
+      initialLocation: '/', // Welcome screen as entry point
       routes: [
-        // Main screen with bottom navigation (handles both routes)
+        // Initial route - Welcome screen
         GoRoute(
           path: '/',
-          redirect: (context, state) => '/dashboard',
+          builder: (context, state) => const WelcomeScreen(),
         ),
+        // Auth flow
+        GoRoute(
+          path: '/login',
+          builder: (context, state) => const LoginScreen(),
+        ),
+        GoRoute(
+          path: '/signup',
+          builder: (context, state) => const SignupScreen(),
+        ),
+        // Admin flow
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const MainScreen(
-            initialIndex: 0,
-          ),
+          builder: (context, state) => const DashboardScreen(),
         ),
         GoRoute(
+          path: '/config',
+          builder: (context, state) => const ConfigurationScreen(),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
+        ),
+        // Public flow
+        GoRoute(
           path: '/feedback',
-          builder: (context, state) => const MainScreen(
-            initialIndex: 1,
-          ),
+          builder: (context, state) => const FeedbackFormScreen(),
         ),
       ],
     );
@@ -77,8 +102,42 @@ class MyApp extends StatelessWidget {
       child: MaterialApp.router(
         title: 'Feedy - Feedback Collection',
         theme: ThemeData(
-          primarySwatch: Colors.blue,
           useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6C63FF),
+            brightness: Brightness.light,
+          ),
+          textTheme: GoogleFonts.interTextTheme().apply(
+            fontFamily: GoogleFonts.inter().fontFamily,
+            bodyColor: Colors.black87,
+            displayColor: Colors.black87,
+          ),
+          fontFamily: GoogleFonts.inter().fontFamily,
+          fontFamilyFallback: const ['Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji'],
+          cardTheme: CardThemeData(
+            elevation: 0,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.grey.shade200, width: 1),
+            ),
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: const Color(0xFF6C63FF), width: 2),
+            ),
+          ),
         ),
         routerConfig: router,
         debugShowCheckedModeBanner: false,
@@ -87,114 +146,3 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// Main screen widget that contains bottom navigation
-/// Manages navigation between Dashboard and Feedback Form screens
-/// Supports URL-based routing for web browsers
-class MainScreen extends StatefulWidget {
-  final int initialIndex;
-
-  const MainScreen({
-    super.key,
-    this.initialIndex = 0,
-  });
-
-  @override
-  State<MainScreen> createState() => _MainScreenState();
-}
-
-class _MainScreenState extends State<MainScreen> {
-  // Current selected tab index (0 = Dashboard, 1 = Feedback Form)
-  late int _currentIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Sync tab index with current route when URL changes (e.g., browser back/forward)
-    final location = GoRouterState.of(context).uri.path;
-    if (location == '/dashboard' && _currentIndex != 0) {
-      setState(() => _currentIndex = 0);
-    } else if (location == '/feedback' && _currentIndex != 1) {
-      setState(() => _currentIndex = 1);
-    }
-  }
-
-  // List of screens corresponding to each tab
-  final List<Widget> _screens = [
-    const DashboardScreen(),
-    const FeedbackFormScreen(),
-  ];
-
-  // List of routes corresponding to each tab
-  final List<String> _routes = [
-    '/dashboard',
-    '/feedback',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Responsive Breakpoint: 640px (Mobile vs Tablet/Desktop)
-          if (constraints.maxWidth < 640) {
-            // Mobile View: Bottom Navigation
-            return Scaffold(
-              body: _screens[_currentIndex],
-              bottomNavigationBar: BottomNavigationBar(
-                currentIndex: _currentIndex,
-                onTap: (index) {
-                  setState(() => _currentIndex = index);
-                  context.go(_routes[index]);
-                },
-                items: const [
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.dashboard),
-                    label: 'Dashboard',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.feedback),
-                    label: 'Feedback',
-                  ),
-                ],
-              ),
-            );
-          } else {
-            // Desktop/Web View: Side Navigation Rail
-            return Row(
-              children: [
-                NavigationRail(
-                  selectedIndex: _currentIndex,
-                  onDestinationSelected: (index) {
-                    setState(() => _currentIndex = index);
-                    context.go(_routes[index]);
-                  },
-                  labelType: NavigationRailLabelType.all,
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: Icon(Icons.dashboard),
-                      label: Text('Dashboard'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.feedback),
-                      label: Text('Feedback'),
-                    ),
-                  ],
-                ),
-                const VerticalDivider(thickness: 1, width: 1),
-                Expanded(
-                  child: _screens[_currentIndex],
-                ),
-              ],
-            );
-          }
-        },
-      ),
-    );
-  }
-}

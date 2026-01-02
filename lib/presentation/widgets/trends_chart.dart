@@ -7,8 +7,38 @@ import 'package:intl/intl.dart';
 /// Both charts use the same date axis for easy comparison
 class TrendsChart extends StatelessWidget {
   final List<Map<String, dynamic>> trendsData; // List of daily trend data
+  late final List<String> _formattedDates; // Pre-computed formatted dates
+  late final List<FlSpot> _countSpots; // Pre-computed count data points
+  late final List<FlSpot> _ratingSpots; // Pre-computed rating data points
+  late final double _maxCount; // Pre-computed max count for Y-axis
 
-  const TrendsChart({super.key, required this.trendsData});
+  TrendsChart({super.key, required this.trendsData}) {
+    // Pre-compute all data to avoid recalculation on every render
+    _formattedDates = trendsData.map((e) {
+      try {
+        final date = DateTime.parse(e['date'] as String);
+        return DateFormat('MMM d').format(date);
+      } catch (_) {
+        return '';
+      }
+    }).toList();
+
+    _countSpots = List.generate(trendsData.length, (index) {
+      final count = (trendsData[index]['count'] as num).toDouble();
+      return FlSpot(index.toDouble(), count);
+    });
+
+    _ratingSpots = List.generate(trendsData.length, (index) {
+      final avgRating = (trendsData[index]['avg_rating'] as num).toDouble();
+      return FlSpot(index.toDouble(), avgRating);
+    });
+
+    _maxCount = trendsData.isEmpty
+        ? 1.0
+        : trendsData
+            .map((e) => (e['count'] as num).toDouble())
+            .reduce((a, b) => a > b ? a : b);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,11 +56,6 @@ class TrendsChart extends StatelessWidget {
         ),
       );
     }
-
-    // Calculate maximum count for Y-axis scaling of first chart
-    final maxCount = trendsData
-        .map((e) => (e['count'] as num).toInt())
-        .reduce((a, b) => a > b ? a : b);
 
     return Card(
       child: Padding(
@@ -55,28 +80,23 @@ class TrendsChart extends StatelessWidget {
                   ),
                   titlesData: FlTitlesData(
                     show: true,
-                    // Bottom axis shows formatted dates
+                    // Bottom axis shows pre-formatted dates
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 30,
                         getTitlesWidget: (value, meta) {
-                          if (value.toInt() >= trendsData.length) {
+                          final index = value.toInt();
+                          if (index >= _formattedDates.length) {
                             return const Text('');
                           }
-                          try {
-                            final dateStr = trendsData[value.toInt()]['date'] as String;
-                            final date = DateTime.parse(dateStr);
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                DateFormat('MMM d').format(date),
-                                style: const TextStyle(fontSize: 10),
-                              ),
-                            );
-                          } catch (e) {
-                            return const Text('');
-                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              _formattedDates[index],
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -101,13 +121,10 @@ class TrendsChart extends StatelessWidget {
                     ),
                   ),
                   borderData: FlBorderData(show: false),
-                  // Line chart data points for feedback count
+                  // Use pre-computed spots
                   lineBarsData: [
                     LineChartBarData(
-                      spots: List.generate(trendsData.length, (index) {
-                        final count = (trendsData[index]['count'] as num).toDouble();
-                        return FlSpot(index.toDouble(), count);
-                      }),
+                      spots: _countSpots,
                       isCurved: true, // Smooth curved line
                       color: Colors.blue,
                       barWidth: 3,
@@ -119,7 +136,7 @@ class TrendsChart extends StatelessWidget {
                     ),
                   ],
                   minY: 0,
-                  maxY: maxCount.toDouble() + 1,
+                  maxY: _maxCount + 1,
                 ),
               ),
             ),
@@ -136,28 +153,23 @@ class TrendsChart extends StatelessWidget {
                   ),
                   titlesData: FlTitlesData(
                     show: true,
-                    // Bottom axis shows formatted dates (same as first chart)
+                    // Bottom axis shows pre-formatted dates (same as first chart)
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 30,
                         getTitlesWidget: (value, meta) {
-                          if (value.toInt() >= trendsData.length) {
+                          final index = value.toInt();
+                          if (index >= _formattedDates.length) {
                             return const Text('');
                           }
-                          try {
-                            final dateStr = trendsData[value.toInt()]['date'] as String;
-                            final date = DateTime.parse(dateStr);
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                DateFormat('MMM d').format(date),
-                                style: const TextStyle(fontSize: 10),
-                              ),
-                            );
-                          } catch (e) {
-                            return const Text('');
-                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              _formattedDates[index],
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -182,13 +194,10 @@ class TrendsChart extends StatelessWidget {
                     ),
                   ),
                   borderData: FlBorderData(show: false),
-                  // Line chart data points for average rating
+                  // Use pre-computed spots
                   lineBarsData: [
                     LineChartBarData(
-                      spots: List.generate(trendsData.length, (index) {
-                        final avgRating = (trendsData[index]['avg_rating'] as num).toDouble();
-                        return FlSpot(index.toDouble(), avgRating);
-                      }),
+                      spots: _ratingSpots,
                       isCurved: true, // Smooth curved line
                       color: Colors.amber,
                       barWidth: 3,

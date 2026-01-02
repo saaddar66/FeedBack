@@ -1,48 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
-/// Enum representing the type of question
-enum QuestionType {
-  singleChoice,
-  multipleChoice,
-  openEnded,
-}
-
-/// Enum representing the type of answer expected
-enum AnswerType {
-  rating,
-  text,
-  yesNo,
-}
-
-/// Model class representing a survey question
-class QuestionModel {
-  final String id;
-  String title;
-  QuestionType type;
-  AnswerType answerType;
-
-  QuestionModel({
-    required this.id,
-    required this.title,
-    required this.type,
-    required this.answerType,
-  });
-
-  /// Creates a copy of the question with updated values
-  QuestionModel copyWith({
-    String? title,
-    QuestionType? type,
-    AnswerType? answerType,
-  }) {
-    return QuestionModel(
-      id: id,
-      title: title ?? this.title,
-      type: type ?? this.type,
-      answerType: answerType ?? this.answerType,
-    );
-  }
-}
+import 'package:provider/provider.dart';
+import '../../data/models/survey_models.dart';
+import '../providers/feedback_provider.dart';
 
 /// Configuration screen for building dynamic survey questions
 /// Allows adding, editing, and deleting survey questions
@@ -54,75 +14,113 @@ class ConfigurationScreen extends StatefulWidget {
 }
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
-  // List of questions maintained in state
-  final List<QuestionModel> _questions = [];
+  // Controller for the survey form title
+  late TextEditingController _surveyTitleController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Do not load questions here, they are passed by the list screen into the provider's editing state
+    // Just initialize the title controller from the provider's editing survey
+    final survey = context.read<FeedbackProvider>().editingSurvey;
+    _surveyTitleController = TextEditingController(
+      text: survey?.title ?? 'Untitled Survey'
+    );
+  }
+
+  @override
+  void dispose() {
+    // Save questions when navigating away from configuration screen
+    context.read<FeedbackProvider>().saveSurveyQuestionsManually();
+    _surveyTitleController.dispose();
+    super.dispose();
+  }
 
   /// Adds a new empty question to the list
   void _addQuestion() {
-    setState(() {
-      _questions.add(
-        QuestionModel(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: '',
-          type: QuestionType.singleChoice,
-          answerType: AnswerType.text,
-        ),
-      );
-    });
+     context.read<FeedbackProvider>().addSurveyQuestion(
+      QuestionModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: '',
+        type: QuestionType.text,
+      ),
+    );
   }
 
   /// Removes a question from the list at the given index
   void _deleteQuestion(int index) {
-    setState(() {
-      _questions.removeAt(index);
-    });
-  }
-
-  /// Updates a question at the given index
-  void _updateQuestion(int index, QuestionModel updatedQuestion) {
-    setState(() {
-      _questions[index] = updatedQuestion;
-    });
+    context.read<FeedbackProvider>().removeSurveyQuestion(index);
   }
 
   /// Handles list reordering
   void _onReorder(int oldIndex, int newIndex) {
-    setState(() {
-      if (oldIndex < newIndex) {
-        newIndex -= 1;
-      }
-      final QuestionModel item = _questions.removeAt(oldIndex);
-      _questions.insert(newIndex, item);
-    });
+    context.read<FeedbackProvider>().reorderSurveyQuestions(oldIndex, newIndex);
+  }
+
+  /// Updates survey title in provider
+  void _updateSurveyTitle() {
+    context.read<FeedbackProvider>().updateEditingSurveyTitle(_surveyTitleController.text);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Consume questions from Provider
+    final questions = context.watch<FeedbackProvider>().surveyQuestions;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Survey Configuration'),
+        title: const Text('Edit Survey'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/dashboard');
+          onPressed: () async {
+            // Save before navigating
+            await context.read<FeedbackProvider>().saveSurveyQuestionsManually();
+            if (context.mounted) {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/config'); // Go back to list
+              }
             }
           },
           tooltip: 'Back',
         ),
       ),
-      body: _questions.isEmpty
-          ? _buildEmptyState()
-          : ReorderableListView(
-              padding: const EdgeInsets.all(16.0),
-              onReorder: _onReorder,
-              children: _questions.map((question) {
-                final index = _questions.indexOf(question);
-                return _buildQuestionItem(index, question.id);
-              }).toList(),
+      body: Column(
+        children: [
+          // Survey Title Input
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _surveyTitleController,
+              decoration: const InputDecoration(
+                labelText: 'Survey Title',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.title),
+              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              onChanged: (_) => _updateSurveyTitle(),
             ),
+          ),
+          
+          Expanded(
+            child: questions.isEmpty
+                ? _buildEmptyState()
+                : ReorderableListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    onReorder: _onReorder,
+                    children: questions.asMap().entries.map((entry) {
+                      return _QuestionCard(
+                        key: ValueKey(entry.value.id),
+                        index: entry.key,
+                        question: entry.value,
+                        onDelete: () => _deleteQuestion(entry.key),
+                      );
+                    }).toList(),
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addQuestion,
         backgroundColor: Colors.blue,
@@ -162,13 +160,86 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       ),
     );
   }
+}
 
-  /// Builds a question item with all its controls
-  Widget _buildQuestionItem(int index, String id) {
-    final question = _questions[index];
+/// Stateful widget for each question card to manage its own controllers
+class _QuestionCard extends StatefulWidget {
+  final int index;
+  final QuestionModel question;
+  final VoidCallback onDelete;
 
+  const _QuestionCard({
+    required Key key,
+    required this.index,
+    required this.question,
+    required this.onDelete,
+  }) : super(key: key);
+
+  @override
+  State<_QuestionCard> createState() => _QuestionCardState();
+}
+
+class _QuestionCardState extends State<_QuestionCard> {
+  late TextEditingController _titleController;
+  late List<TextEditingController> _optionControllers;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.question.title);
+    _optionControllers = widget.question.options
+        .map((opt) => TextEditingController(text: opt))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    for (var controller in _optionControllers) {
+      controller.dispose();
+    }
+    _optionControllers.clear(); // Safety: clear list after disposal
+    super.dispose();
+  }
+
+  void _saveQuestion() {
+    final provider = context.read<FeedbackProvider>();
+    final updatedQuestion = widget.question.copyWith(
+      title: _titleController.text,
+      options: _optionControllers.map((c) => c.text).toList(),
+    );
+    provider.updateSingleSurveyQuestion(widget.index, updatedQuestion);
+  }
+
+  void _updateType(QuestionType? newType) {
+    if (newType == null) return;
+    final provider = context.read<FeedbackProvider>();
+    final updatedQuestion = widget.question.copyWith(type: newType);
+    provider.updateSingleSurveyQuestion(widget.index, updatedQuestion);
+  }
+
+  void _addOption() {
+    setState(() {
+      _optionControllers.add(TextEditingController());
+    });
+  }
+
+  void _removeOption(int index) {
+    setState(() {
+      _optionControllers[index].dispose();
+      _optionControllers.removeAt(index);
+    });
+    _saveQuestion();
+  }
+
+  bool _needsOptions() {
+    return widget.question.type == QuestionType.singleChoice ||
+        widget.question.type == QuestionType.multipleChoice;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
-      key: ValueKey(id),
       margin: const EdgeInsets.only(bottom: 16.0),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -180,42 +251,36 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Question ${index + 1}',
+                  'Question ${widget.index + 1}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                // Delete button
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _deleteQuestion(index),
+                  onPressed: widget.onDelete,
                   tooltip: 'Delete question',
                 ),
               ],
             ),
             const SizedBox(height: 16),
             
-            // Title TextFormField
-            TextFormField(
-              initialValue: question.title,
+            // Title TextField with controller
+            TextField(
+              controller: _titleController,
               decoration: const InputDecoration(
                 labelText: 'Question Title',
                 border: OutlineInputBorder(),
                 hintText: 'Enter your question here...',
               ),
-              onChanged: (value) {
-                _updateQuestion(
-                  index,
-                  question.copyWith(title: value),
-                );
-              },
+              onChanged: (_) => _saveQuestion(),
             ),
             const SizedBox(height: 16),
             
             // QuestionType Dropdown
             DropdownButtonFormField<QuestionType>(
-              value: question.type,
+              value: widget.question.type,
               decoration: const InputDecoration(
                 labelText: 'Question Type',
                 border: OutlineInputBorder(),
@@ -226,68 +291,46 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                   child: Text(_getQuestionTypeLabel(type)),
                 );
               }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  _updateQuestion(
-                    index,
-                    question.copyWith(type: value),
-                  );
-                }
-              },
+              onChanged: _updateType,
             ),
-            const SizedBox(height: 16),
             
-            // AnswerType Dropdown
-            DropdownButtonFormField<AnswerType>(
-              value: question.answerType,
-              decoration: const InputDecoration(
-                labelText: 'Answer Type',
-                border: OutlineInputBorder(),
+            // Options section for choice questions
+            if (_needsOptions()) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Options:',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              items: AnswerType.values.map((type) {
-                return DropdownMenuItem(
-                  value: type,
-                  child: Text(_getAnswerTypeLabel(type)),
+              const SizedBox(height: 8),
+              ..._optionControllers.asMap().entries.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: entry.value,
+                          decoration: InputDecoration(
+                            labelText: 'Option ${entry.key + 1}',
+                            border: const OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => _saveQuestion(),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle, color: Colors.red),
+                        onPressed: () => _removeOption(entry.key),
+                      ),
+                    ],
+                  ),
                 );
               }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  _updateQuestion(
-                    index,
-                    question.copyWith(answerType: value),
-                  );
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Save the question (already in state, just show confirmation)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Question saved successfully!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: Colors.blue,
-                ),
-                child: const Text(
-                  'Save',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+              TextButton.icon(
+                onPressed: _addOption,
+                icon: const Icon(Icons.add),
+                label: const Text('Add Option'),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -297,25 +340,14 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   /// Returns a human-readable label for QuestionType
   String _getQuestionTypeLabel(QuestionType type) {
     switch (type) {
+      case QuestionType.text:
+        return 'Text';
+      case QuestionType.rating:
+        return 'Rating';
       case QuestionType.singleChoice:
         return 'Single Choice';
       case QuestionType.multipleChoice:
         return 'Multiple Choice';
-      case QuestionType.openEnded:
-        return 'Open Ended';
-    }
-  }
-
-  /// Returns a human-readable label for AnswerType
-  String _getAnswerTypeLabel(AnswerType type) {
-    switch (type) {
-      case AnswerType.rating:
-        return 'Rating';
-      case AnswerType.text:
-        return 'Text';
-      case AnswerType.yesNo:
-        return 'Yes/No';
     }
   }
 }
-

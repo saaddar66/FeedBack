@@ -41,7 +41,7 @@ class WelcomeScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => context.go('/feedback'),
+                      onPressed: () => context.go('/survey'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: Colors.blue,
@@ -63,22 +63,17 @@ class WelcomeScreen extends StatelessWidget {
           Positioned(
             top: 16,
             right: 16,
-            child: ElevatedButton(
+            child: IconButton(
               onPressed: () => context.go('/login'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                backgroundColor: Colors.blue,
+              icon: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield_outlined, color: Colors.blue),
+                  SizedBox(width: 4),
+                  Icon(Icons.person_outline, color: Colors.blue),
+                ],
               ),
-              child: const Text(
-                'Admin Login',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              tooltip: 'Admin Login',
             ),
           ),
         ],

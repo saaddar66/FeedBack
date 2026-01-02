@@ -13,7 +13,11 @@ import 'package:feedy/presentation/screens/signup_screen.dart';
 import 'package:feedy/presentation/screens/dashboard_screen.dart';
 import 'package:feedy/presentation/screens/feedback_form_screen.dart';
 import 'package:feedy/presentation/screens/configuration_screen.dart';
+import 'package:feedy/presentation/screens/survey_list_screen.dart';
 import 'package:feedy/presentation/screens/settings_screen.dart';
+import 'package:feedy/presentation/screens/survey_screen.dart';
+import 'package:feedy/presentation/screens/feedback_list_screen.dart';
+import 'package:feedy/presentation/screens/survey_response_list_screen.dart';
 // Import firebase_options.dart after running: flutterfire configure
 import 'firebase_options.dart';
 
@@ -82,7 +86,13 @@ class MyApp extends StatelessWidget {
         ),
         GoRoute(
           path: '/config',
-          builder: (context, state) => const ConfigurationScreen(),
+          builder: (context, state) => const SurveyListScreen(),
+          routes: [
+            GoRoute(
+              path: 'edit',
+              builder: (context, state) => const ConfigurationScreen(),
+            ),
+          ],
         ),
         GoRoute(
           path: '/settings',
@@ -92,6 +102,19 @@ class MyApp extends StatelessWidget {
         GoRoute(
           path: '/feedback',
           builder: (context, state) => const FeedbackFormScreen(),
+        ),
+        GoRoute(
+          path: '/survey',
+          builder: (context, state) => const SurveyScreen(),
+        ),
+        // Result views (Admin)
+        GoRoute(
+          path: '/feedback-results',
+          builder: (context, state) => const FeedbackListScreen(),
+        ),
+        GoRoute(
+          path: '/survey-results',
+          builder: (context, state) => const SurveyResponseListScreen(),
         ),
       ],
     );

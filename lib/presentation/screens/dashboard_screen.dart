@@ -6,6 +6,7 @@ import '../providers/feedback_provider.dart';
 import '../widgets/rating_chart.dart';
 import '../widgets/trends_chart.dart';
 import '../widgets/filter_dialog.dart';
+import '../models/selector_models.dart';
 import '../../data/models/feedback_model.dart';
 
 /// Dashboard screen displaying feedback statistics, charts, and recent feedback
@@ -34,18 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('Feedback Dashboard'),
         actions: [
-          // Configuration button to navigate to configuration screen
-          IconButton(
-            icon: const Icon(Icons.settings_applications),
-            onPressed: () => context.go('/config'),
-            tooltip: 'Survey Configuration',
-          ),
-          // Settings button to navigate to settings screen
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => context.go('/settings'),
-            tooltip: 'Settings',
-          ),
+
           // Filter button to open filter dialog
           IconButton(
             icon: const Icon(Icons.filter_list),
@@ -89,7 +79,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       // S1: Stats Cards - Only rebuilds when totalFeedback or averageRating changes
                       _buildStatsCardsSelector(),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: TextButton.icon(
+                                onPressed: () => context.go('/feedback-results'),
+                                icon: const Icon(Icons.list_alt),
+                                label: const Text(
+                                  'View All Feedback',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: TextButton.icon(
+                                onPressed: () => context.go('/survey-results'),
+                                // Changed icon to imply "Results/Data" rather than "Table View"
+                                icon: const Icon(Icons.assessment_outlined),
+                                label: const Text(
+                                  'View All Surveys',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       
                       // S2: Filters
                       _buildFiltersInfoSelector(),
@@ -113,24 +134,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         },
       ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: Colors.grey.shade200, width: 1),
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                IconButton(
+                  onPressed: () => context.go('/config'),
+                  icon: const Icon(Icons.settings_applications),
+                  tooltip: 'Survey Configuration',
+                  iconSize: 28,
+                  color: Colors.blue,
+                ),
+                IconButton(
+                  onPressed: () => context.go('/settings'),
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                  iconSize: 28,
+                  color: Colors.grey[700],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   /// Builds the statistics cards row using Selector
   /// Only rebuilds when totalFeedback or averageRating changes
   Widget _buildStatsCardsSelector() {
-    return Selector<FeedbackProvider, Map<String, dynamic>>(
-      selector: (_, provider) => {
-        'totalFeedback': provider.totalFeedback,
-        'averageRating': provider.averageRating,
-      },
+    return Selector<FeedbackProvider, StatsData>(
+      selector: (_, provider) => StatsData(
+        provider.totalFeedback,
+        provider.averageRating,
+      ),
       builder: (context, stats, child) {
         return Row(
           children: [
             Expanded(
               child: _StatCard(
                 title: 'Total Feedback',
-                value: stats['totalFeedback'].toString(),
+                value: stats.totalFeedback.toString(),
                 icon: Icons.feedback,
                 color: Colors.blue,
               ),
@@ -139,7 +192,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Expanded(
               child: _StatCard(
                 title: 'Avg Rating',
-                value: (stats['averageRating'] as double).toStringAsFixed(1),
+                value: stats.averageRating.toStringAsFixed(1),
                 icon: Icons.star,
                 color: Colors.amber,
               ),
@@ -152,24 +205,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Builds the charts row for desktop view using Selector
   Widget _buildChartsRowSelector() {
-    return Selector<FeedbackProvider, Map<String, dynamic>>(
-      selector: (_, provider) => {
-        'ratingDistribution': provider.ratingDistribution,
-        'trendsData': provider.trendsData,
-      },
+    return Selector<FeedbackProvider, ChartData>(
+      selector: (_, provider) => ChartData(
+        provider.ratingDistribution,
+        provider.trendsData,
+      ),
       builder: (context, data, child) {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: RatingChart(
-                ratingDistribution: data['ratingDistribution'] as Map<int, int>,
+                ratingDistribution: data.ratingDistribution,
               ),
             ),
             const SizedBox(width: 24),
             Expanded(
               child: TrendsChart(
-                trendsData: data['trendsData'] as List<Map<String, dynamic>>,
+                trendsData: data.trendsData,
               ),
             ),
           ],
@@ -180,20 +233,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Builds the charts column for mobile/tablet view using Selector
   Widget _buildChartsColumnSelector() {
-    return Selector<FeedbackProvider, Map<String, dynamic>>(
-      selector: (_, provider) => {
-        'ratingDistribution': provider.ratingDistribution,
-        'trendsData': provider.trendsData,
-      },
+    return Selector<FeedbackProvider, ChartData>(
+      selector: (_, provider) => ChartData(
+        provider.ratingDistribution,
+        provider.trendsData,
+      ),
       builder: (context, data, child) {
         return Column(
           children: [
             RatingChart(
-              ratingDistribution: data['ratingDistribution'] as Map<int, int>,
+              ratingDistribution: data.ratingDistribution,
             ),
             const SizedBox(height: 24),
             TrendsChart(
-              trendsData: data['trendsData'] as List<Map<String, dynamic>>,
+              trendsData: data.trendsData,
             ),
           ],
         );
@@ -205,13 +258,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Shows active filters and provides a button to clear them
   /// Only displays if at least one filter is active
   Widget _buildFiltersInfoSelector() {
-    return Selector<FeedbackProvider, Map<String, dynamic>>(
-      selector: (_, provider) => {
-        'selectedMinRating': provider.selectedMinRating,
-        'selectedMaxRating': provider.selectedMaxRating,
-        'startDate': provider.startDate,
-        'endDate': provider.endDate,
-      },
+    return Selector<FeedbackProvider, FilterData>(
+      selector: (_, provider) => FilterData(
+        selectedMinRating: provider.selectedMinRating,
+        selectedMaxRating: provider.selectedMaxRating,
+        startDate: provider.startDate,
+        endDate: provider.endDate,
+      ),
       builder: (context, filters, child) {
         final provider = context.read<FeedbackProvider>();
         return _buildFiltersInfo(provider);
@@ -314,11 +367,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'Recent Feedback',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                const Text(
+                  'Recent Feedback',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
           ),
           // List of feedback items (max 5)

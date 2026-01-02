@@ -1,6 +1,9 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/feedback_model.dart';
+import '../models/survey_models.dart';
 import 'dart:math';
+import 'dart:convert';
 
 /// Database helper class using Firebase Realtime Database
 /// Implements singleton pattern to ensure single database instance
@@ -39,7 +42,27 @@ class DatabaseHelper {
     }
   }
 
-  void _generateMockData() {
+  /// Generates or loads cached mock data for demo/offline mode
+  Future<void> _generateMockData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('mock_feedback_data');
+      
+      if (cached != null) {
+        // Load from cache
+        final List<dynamic> decoded = jsonDecode(cached);
+        _mockData.clear();
+        _mockData.addAll(
+          decoded.map((e) => FeedbackModel.fromMap(Map<String, dynamic>.from(e)))
+        );
+        print('Mock: Loaded ${_mockData.length} cached feedback entries');
+        return;
+      }
+    } catch (e) {
+      print('Error loading cached mock data: $e');
+    }
+    
+    // Generate new mock data
     final random = Random();
     final now = DateTime.now();
     for (int i = 0; i < 20; i++) {
@@ -52,6 +75,16 @@ class DatabaseHelper {
             name: random.nextBool() ? 'User $i' : null,
             email: random.nextBool() ? 'user$i@example.com' : null,
         ));
+    }
+    
+    // Cache for next time
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(_mockData.map((e) => e.toMap()).toList());
+      await prefs.setString('mock_feedback_data', encoded);
+      print('Mock: Generated and cached ${_mockData.length} feedback entries');
+    } catch (e) {
+      print('Error caching mock data: $e');
     }
   }
 
@@ -242,6 +275,189 @@ class DatabaseHelper {
     
     final totalRating = feedbackList.map((f) => f.rating).reduce((a, b) => a + b);
     return totalRating / feedbackList.length;
+  }
+
+  // --- Survey Configuration & Responses ---
+
+  /// Saves the current configuration of survey questions to Firebase or SharedPreferences (mock mode)
+  // --- Survey Management Methods ---
+
+  /// Retrieves all configured surveys
+  Future<List<SurveyForm>> getAllSurveys() async {
+    if (_useMock) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final jsonString = prefs.getString('all_surveys');
+        if (jsonString != null) {
+          final List<dynamic> decoded = jsonDecode(jsonString);
+          return decoded.map((item) => SurveyForm.fromMap(Map<String, dynamic>.from(item))).toList();
+        }
+      } catch (e) {
+        print('Error loading surveys from SharedPreferences: $e');
+      }
+      return [];
+    }
+
+    if (_databaseRef == null) await initDatabase();
+    if (_useMock) return getAllSurveys();
+
+    try {
+      final snapshot = await _databaseRef!.root.child('surveys').get();
+      if (snapshot.exists && snapshot.value != null) {
+        // Firebase returns either a List (if keys are integers) or Map (if keys are strings)
+        // Since we will use push(), keys are strings.
+        final dynamic value = snapshot.value;
+        List<SurveyForm> surveys = [];
+        if (value is Map) {
+          value.forEach((key, val) {
+             final map = Map<String, dynamic>.from(val as Map);
+             map['id'] = key; // Ensure ID matches key
+             surveys.add(SurveyForm.fromMap(map));
+          });
+        } else if (value is List) {
+           for (var item in value) {
+             if (item != null) {
+                surveys.add(SurveyForm.fromMap(Map<String, dynamic>.from(item as Map)));
+             }
+           }
+        }
+        return surveys;
+      }
+    } catch (e) {
+      print('Error fetching surveys: $e');
+    }
+    return [];
+  }
+
+  /// Saves a survey (create or update)
+  Future<void> saveSurvey(SurveyForm survey) async {
+    if (_useMock) {
+      final surveys = await getAllSurveys();
+      final index = surveys.indexWhere((s) => s.id == survey.id);
+      if (index >= 0) {
+        surveys[index] = survey;
+      } else {
+        surveys.add(survey);
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('all_surveys', jsonEncode(surveys.map((e) => e.toMap()).toList()));
+      return;
+    }
+
+    // For Firebase, we use the survey ID as the key
+    await _databaseRef!.root.child('surveys/${survey.id}').set(survey.toMap());
+  }
+
+  /// Deletes a survey
+  Future<void> deleteSurvey(String surveyId) async {
+    if (_useMock) {
+      final surveys = await getAllSurveys();
+      surveys.removeWhere((s) => s.id == surveyId);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('all_surveys', jsonEncode(surveys.map((e) => e.toMap()).toList()));
+      return;
+    }
+    await _databaseRef!.root.child('surveys/$surveyId').remove();
+  }
+
+  /// Activates one survey and deactivates all others
+  Future<void> activateSurvey(String surveyId) async {
+    final surveys = await getAllSurveys();
+    
+    // Update local objects
+    for (var s in surveys) {
+      s.isActive = (s.id == surveyId);
+    }
+
+    if (_useMock) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('all_surveys', jsonEncode(surveys.map((e) => e.toMap()).toList()));
+      return;
+    }
+
+    // For Firebase, we can update them cleanly
+    // A more efficient way to avoid race conditions is usually a transaction, 
+    // but simple batch update works for this scale.
+    Map<String, Object?> updates = {};
+    for (var s in surveys) {
+      updates['surveys/${s.id}/isActive'] = s.isActive;
+    }
+    await _databaseRef!.root.update(updates);
+  }
+
+  /// Gets the currently active survey for user display
+  Future<SurveyForm?> getActiveSurvey() async {
+    final surveys = await getAllSurveys();
+    try {
+      return surveys.firstWhere((s) => s.isActive);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Submits a user's answers to the survey
+  Future<void> submitSurveyResponse(Map<String, dynamic> answers) async {
+       if (_useMock) {
+          // In mock mode, save responses to SharedPreferences
+          try {
+              final prefs = await SharedPreferences.getInstance();
+              final existingResponses = prefs.getStringList('survey_responses') ?? [];
+              final responseJson = jsonEncode({
+                  'answers': answers,
+                  'submittedAt': DateTime.now().toIso8601String(),
+              });
+              existingResponses.add(responseJson);
+              await prefs.setStringList('survey_responses', existingResponses);
+              print('Mock: Survey response saved to SharedPreferences');
+          } catch (e) {
+              print('Error saving survey response: $e');
+          }
+          return;
+      }
+
+      // Store responses under 'survey_responses'
+      final responseRef = _databaseRef!.root.child('survey_responses').push();
+      
+      await responseRef.set({
+          'answers': answers,
+          'submittedAt': DateTime.now().toIso8601String(),
+      });
+  }
+
+  /// Retrieves all survey responses
+  Future<List<Map<String, dynamic>>> getAllSurveyResponses() async {
+    if (_useMock) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final responses = prefs.getStringList('survey_responses') ?? [];
+        return responses.map((r) => Map<String, dynamic>.from(jsonDecode(r))).toList();
+      } catch (e) {
+        print('Error loading survey responses: $e');
+        return [];
+      }
+    }
+
+    if (_databaseRef == null) await initDatabase();
+    if (_useMock) return getAllSurveyResponses();
+
+    try {
+      final snapshot = await _databaseRef!.root.child('survey_responses').get();
+      if (snapshot.exists && snapshot.value != null) {
+        final dynamic value = snapshot.value;
+        List<Map<String, dynamic>> responses = [];
+        if (value is Map) {
+          value.forEach((key, val) {
+             final map = Map<String, dynamic>.from(val as Map);
+             map['id'] = key;
+             responses.add(map);
+          });
+        }
+        return responses;
+      }
+    } catch (e) {
+      print('Error fetching survey responses: $e');
+    }
+    return [];
   }
 
   /// Closes the database connection

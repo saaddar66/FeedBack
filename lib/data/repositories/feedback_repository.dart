@@ -1,5 +1,6 @@
 import '../database/database_helper.dart';
 import '../models/feedback_model.dart';
+import '../models/survey_models.dart';
 
 /// Repository class that acts as an abstraction layer between business logic and data layer
 /// Provides methods for all feedback-related data operations
@@ -97,5 +98,46 @@ class FeedbackRepository {
       endDate: endDate,
     );
   }
-}
 
+  // --- Survey Methods ---
+ 
+  /// Saves the list of survey questions to the database
+  /// This overwrites the existing configuration
+   // --- Survey Methods ---
+ 
+  /// Retrieves all surveys
+  Future<List<SurveyForm>> getAllSurveys() async {
+    return await _databaseHelper.getAllSurveys();
+  }
+
+  /// Saves a survey (create/update)
+  Future<void> saveSurvey(SurveyForm survey) async {
+    await _databaseHelper.saveSurvey(survey);
+  }
+
+  /// Deletes a survey by ID
+  Future<void> deleteSurvey(String surveyId) async {
+    await _databaseHelper.deleteSurvey(surveyId);
+  }
+
+  /// Sets a survey as active (and deactivates others)
+  Future<void> activateSurvey(String surveyId) async {
+    await _databaseHelper.activateSurvey(surveyId);
+  }
+
+  /// Gets the currently active survey
+  Future<SurveyForm?> getActiveSurvey() async {
+    return await _databaseHelper.getActiveSurvey();
+  }
+
+  /// Submits a set of answers for the survey
+  /// [answers] is a map where key is question ID and value is the user's answer
+  Future<void> submitSurveyResponse(Map<String, dynamic> answers) async {
+    await _databaseHelper.submitSurveyResponse(answers);
+  }
+
+  /// Retrieves all survey responses
+  Future<List<Map<String, dynamic>>> getSurveyResponses() async {
+    return await _databaseHelper.getAllSurveyResponses();
+  }
+}

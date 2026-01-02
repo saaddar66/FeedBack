@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/models/feedback_model.dart';
+import '../../data/models/survey_models.dart';
 
 /// Top-level function for computing statistics in a background isolate
 /// This function must be top-level or static to work with compute()
@@ -14,7 +15,7 @@ Map<String, dynamic> calculateStats(List<Map<String, dynamic>> feedbackJsonList)
       email: json['email'] as String?,
       rating: json['rating'] as int,
       comments: json['comments'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String), // Note: created_at from toMap()
     );
   }).toList();
 
@@ -88,11 +89,140 @@ class FeedbackProvider with ChangeNotifier {
   DateTime? _startDate;                            // Start date filter
   DateTime? _endDate;                              // End date filter
 
-  // Getters to expose state to UI
-  List<FeedbackModel> get feedbackList => _feedbackList;
+  // Survey config state
+  List<SurveyForm> _surveys = [];
+  SurveyForm? _editingSurvey;       // The survey currently being edited
+  SurveyForm? _activeSurvey;        // The currently active survey for users (cached)
+  
+  // Backwards compatibility for ConfigurationScreen (now operates on _editingSurvey)
+  SurveyForm? get editingSurvey => _editingSurvey;
+  List<QuestionModel> get surveyQuestions => 
+      _editingSurvey != null ? List.unmodifiable(_editingSurvey!.questions) : [];
+
+  List<SurveyForm> get surveys => List.unmodifiable(_surveys);
+
+  /// Loads all surveys
+  Future<void> loadSurveys() async {
+    _surveys = await _repository.getAllSurveys();
+    notifyListeners();
+  }
+
+  /// Loads the active survey for the user-facing screen
+  Future<void> loadActiveSurvey() async {
+    _activeSurvey = await _repository.getActiveSurvey();
+    notifyListeners();
+  }
+
+  /// Helper to get questions for the user screen
+  List<QuestionModel> get activeSurveyQuestions => 
+      _activeSurvey != null ? List.unmodifiable(_activeSurvey!.questions) : [];
+
+  /// Starts editing a survey (or creates a new one if null)
+  void startEditingSurvey(SurveyForm? survey) {
+    if (survey == null) {
+      // Create new draft
+      _editingSurvey = SurveyForm(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: 'Untitled Survey',
+        isActive: false, // Default to inactive
+        questions: [],
+      );
+    } else {
+      _editingSurvey = survey.copyWith(
+        questions: List.from(survey.questions), // Deep copy list
+      );
+    }
+    notifyListeners();
+  }
+
+  /// Updates the title of the editing survey
+  void updateEditingSurveyTitle(String title) {
+    if (_editingSurvey != null) {
+      _editingSurvey!.title = title;
+      notifyListeners();
+    }
+  }
+
+  // --- Question Manipulation (Operates on _editingSurvey) ---
+
+  void addSurveyQuestion(QuestionModel question) {
+    if (_editingSurvey != null) {
+      _editingSurvey!.questions.add(question);
+      notifyListeners();
+    }
+  }
+
+  void removeSurveyQuestion(int index) {
+    if (_editingSurvey != null) {
+      _editingSurvey!.questions.removeAt(index);
+      // Auto-save logic removed for multi-survey, explicit save required on exit
+      notifyListeners();
+    }
+  }
+
+  void updateSingleSurveyQuestion(int index, QuestionModel question) {
+    if (_editingSurvey != null) {
+      _editingSurvey!.questions[index] = question;
+      notifyListeners();
+    }
+  }
+
+  void reorderSurveyQuestions(int oldIndex, int newIndex) {
+    if (_editingSurvey != null) {
+      if (oldIndex < newIndex) {
+        newIndex -= 1;
+      }
+      final QuestionModel item = _editingSurvey!.questions.removeAt(oldIndex);
+      _editingSurvey!.questions.insert(newIndex, item);
+      notifyListeners();
+    }
+  }
+
+  /// Saves the current editing survey to the database
+  Future<void> saveEditingSurvey() async {
+    if (_editingSurvey != null) {
+      await _repository.saveSurvey(_editingSurvey!);
+      await loadSurveys(); // Refresh list
+    }
+  }
+  
+  // Compatibility alias
+  Future<void> saveSurveyQuestionsManually() async {
+      await saveEditingSurvey();
+  }
+
+  /// Deletes a survey
+  Future<void> deleteSurvey(String surveyId) async {
+    await _repository.deleteSurvey(surveyId);
+    await loadSurveys();
+  }
+
+  /// Toggles a survey's active state
+  Future<void> toggleSurveyActive(String surveyId) async {
+    await _repository.activateSurvey(surveyId);
+    await loadSurveys();
+  }
+
+  /// Submits survey answers
+  Future<void> submitSurveyAnswers(Map<String, dynamic> answers) async {
+    await _repository.submitSurveyResponse(answers);
+  }
+
+  // Survey Responses state
+  List<Map<String, dynamic>> _surveyResponses = [];
+  List<Map<String, dynamic>> get surveyResponses => List.unmodifiable(_surveyResponses);
+
+  /// Loads all survey responses
+  Future<void> loadSurveyResponses() async {
+    _surveyResponses = await _repository.getSurveyResponses();
+    notifyListeners();
+  }
+
+  // Getters to expose state to UI (unmodifiable to prevent accidental mutation)
+  List<FeedbackModel> get feedbackList => List.unmodifiable(_feedbackList);
   int get totalFeedback => _totalFeedback;
-  Map<int, int> get ratingDistribution => _ratingDistribution;
-  List<Map<String, dynamic>> get trendsData => _trendsData;
+  Map<int, int> get ratingDistribution => Map.unmodifiable(_ratingDistribution);
+  List<Map<String, dynamic>> get trendsData => List.unmodifiable(_trendsData);
   double get averageRating => _averageRating;
   bool get isLoading => _isLoading;
 
@@ -118,15 +248,8 @@ class FeedbackProvider with ChangeNotifier {
         endDate: _endDate,
       );
 
-      // 2. Convert FeedbackModel list to JSON for serialization
-      final feedbackJsonList = _feedbackList.map((f) => {
-        'id': f.id,
-        'name': f.name,
-        'email': f.email,
-        'rating': f.rating,
-        'comments': f.comments,
-        'createdAt': f.createdAt.toIso8601String(),
-      }).toList();
+      // 2. Convert FeedbackModel list to JSON for serialization using existing toMap()
+      final feedbackJsonList = _feedbackList.map((f) => f.toMap()).toList();
 
       // 3. Run calculations in background isolate using compute()
       final stats = await compute(calculateStats, feedbackJsonList);
@@ -134,8 +257,12 @@ class FeedbackProvider with ChangeNotifier {
       // 4. Update state with calculated results
       _totalFeedback = stats['totalFeedback'] as int;
       _averageRating = stats['averageRating'] as double;
-      _ratingDistribution = Map<int, int>.from(stats['ratingDistribution'] as Map);
-      _trendsData = List<Map<String, dynamic>>.from(stats['trendsData'] as List);
+      _ratingDistribution = (stats['ratingDistribution'] as Map).map(
+        (key, value) => MapEntry(key as int, value as int),
+      );
+      _trendsData = (stats['trendsData'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
     } catch (e) {
       debugPrint('Error loading feedback: $e');

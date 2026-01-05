@@ -329,6 +329,49 @@ class DatabaseHelper {
     return [];
   }
 
+  /// Transforms survey data for Firebase storage
+  /// Converts questions list to object format with value field for index.html compatibility
+  Map<String, dynamic> _transformSurveyForFirebase(SurveyForm survey) {
+    final baseMap = survey.toMap();
+    
+    // Convert questions list to object format
+    // Each question gets a 'value' field: true if survey is active, false otherwise
+    final Map<String, dynamic> questionsMap = {};
+    for (var question in survey.questions) {
+      final questionMap = question.toMap();
+      // Add 'value' field based on survey's isActive status
+      // When survey is green (active), questions have value: true (shown in index.html)
+      // When survey is red (inactive), questions have value: false (hidden in index.html)
+      questionMap['value'] = survey.isActive;
+      // Also add 'text' field for index.html compatibility (uses 'title' as 'text')
+      questionMap['text'] = question.title;
+      // Map question type to index.html format
+      questionMap['type'] = _mapQuestionTypeForWeb(question.type);
+      // Add required field (default to true, can be set to false if needed)
+      questionMap['required'] = true;
+      questionsMap[question.id] = questionMap;
+    }
+    
+    // Replace questions list with questions object
+    baseMap['questions'] = questionsMap;
+    
+    return baseMap;
+  }
+
+  /// Maps Dart QuestionType to web format string
+  String _mapQuestionTypeForWeb(QuestionType type) {
+    switch (type) {
+      case QuestionType.text:
+        return 'text';
+      case QuestionType.rating:
+        return 'rating';
+      case QuestionType.singleChoice:
+        return 'singleChoice';
+      case QuestionType.multipleChoice:
+        return 'multipleChoice';
+    }
+  }
+
   /// Saves a survey (create or update)
   Future<void> saveSurvey(SurveyForm survey) async {
     if (_useMock) {
@@ -344,8 +387,9 @@ class DatabaseHelper {
       return;
     }
 
-    // For Firebase, we use the survey ID as the key
-    await _databaseRef!.root.child('surveys/${survey.id}').set(survey.toMap());
+    // For Firebase, transform the survey structure for web compatibility
+    final transformedData = _transformSurveyForFirebase(survey);
+    await _databaseRef!.root.child('surveys/${survey.id}').set(transformedData);
   }
 
   /// Deletes a survey
@@ -375,12 +419,26 @@ class DatabaseHelper {
       return;
     }
 
-    // For Firebase, we can update them cleanly
-    // A more efficient way to avoid race conditions is usually a transaction, 
-    // but simple batch update works for this scale.
+    // For Firebase, we need to update both isActive and questions structure
+    // When a survey becomes active (green), its questions get value: true
+    // When a survey becomes inactive (red), its questions get value: false
     Map<String, Object?> updates = {};
     for (var s in surveys) {
       updates['surveys/${s.id}/isActive'] = s.isActive;
+      
+      // Update questions structure with value field based on isActive
+      // When survey is green (active), questions have value: true (shown in index.html)
+      // When survey is red (inactive), questions have value: false (hidden in index.html)
+      final questionsMap = <String, dynamic>{};
+      for (var question in s.questions) {
+        final questionMap = question.toMap();
+        questionMap['value'] = s.isActive;
+        questionMap['text'] = question.title;
+        questionMap['type'] = _mapQuestionTypeForWeb(question.type);
+        questionMap['required'] = true;
+        questionsMap[question.id] = questionMap;
+      }
+      updates['surveys/${s.id}/questions'] = questionsMap;
     }
     await _databaseRef!.root.update(updates);
   }

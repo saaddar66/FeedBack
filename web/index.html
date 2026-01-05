@@ -1,38 +1,678 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
+  <meta charset="UTF-8" />
+  <title>Survey & Feedback with Firebase</title>
 
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <base href="$FLUTTER_BASE_HREF">
-
-  <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="feedy">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>feedy</title>
-  <link rel="manifest" href="manifest.json">
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <script src="flutter_bootstrap.js" async></script>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center py-8">
+
+  <div class="w-full max-w-xl bg-white rounded-xl shadow-lg p-6">
+
+    <!-- ================= LOADING SECTION ================= -->
+    <section id="loadingSection" class="text-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+      <p class="mt-4 text-gray-600">Loading survey...</p>
+    </section>
+
+    <!-- ================= ERROR SECTION ================= -->
+    <section id="errorSection" class="hidden text-center">
+      <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p class="text-red-800 font-medium" id="errorMessage">No active survey found.</p>
+      </div>
+    </section>
+
+    <!-- ================= SURVEY SECTION ================= -->
+    <section id="surveySection" class="hidden">
+      <h1 class="text-2xl font-bold mb-4 text-gray-800" id="surveyTitle">
+        Survey
+      </h1>
+
+      <form id="surveyForm" class="space-y-6">
+        <!-- Questions will be dynamically rendered here -->
+        <div id="questionsContainer"></div>
+
+        <button
+          type="submit"
+          id="submitSurveyBtn"
+          class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
+          Submit Survey
+        </button>
+      </form>
+    </section>
+
+    <!-- ================= FEEDBACK SECTION ================= -->
+    <section id="feedbackSection" class="hidden">
+      <h1 class="text-2xl font-bold mb-4 text-gray-800">
+        Feedback
+      </h1>
+
+      <form id="feedbackForm" class="space-y-4">
+
+        <!-- Name -->
+        <div>
+          <label class="block font-medium mb-1">Name (optional)</label>
+          <input
+            type="text"
+            class="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            name="name"
+            id="feedbackName"
+          />
+        </div>
+
+        <!-- Email -->
+        <div>
+          <label class="block font-medium mb-1">Email (optional)</label>
+          <input
+            type="email"
+            class="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            name="email"
+            id="feedbackEmail"
+          />
+        </div>
+
+        <!-- Rating -->
+        <div>
+          <label class="block font-medium mb-1">Rating <span class="text-red-500">*</span></label>
+          <select
+            class="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            name="rating"
+            id="feedbackRating"
+            required
+          >
+            <option value="">Select rating</option>
+            <option value="1">1 - Very Bad</option>
+            <option value="2">2 - Bad</option>
+            <option value="3">3 - Okay</option>
+            <option value="4">4 - Good</option>
+            <option value="5">5 - Excellent</option>
+          </select>
+          <span class="text-red-500 text-sm hidden" id="ratingError">Rating is required</span>
+        </div>
+
+        <!-- Comments -->
+        <div>
+          <label class="block font-medium mb-1">Comments <span class="text-red-500">*</span></label>
+          <textarea
+            class="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            name="comments"
+            id="feedbackComments"
+            rows="4"
+            required
+          ></textarea>
+          <span class="text-red-500 text-sm hidden" id="commentsError">Comments are required</span>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+        >
+          Submit Feedback
+        </button>
+      </form>
+    </section>
+
+    <!-- ================= THANK YOU ================= -->
+    <section id="thankYouSection" class="hidden text-center">
+      <h2 class="text-2xl font-bold text-green-600">
+        Thank you! 🎉
+      </h2>
+      <p class="text-gray-600 mt-2">
+        Your responses have been submitted.
+      </p>
+      <button
+        id="submitAnotherBtn"
+        class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+      >
+        Submit Another Response
+      </button>
+    </section>
+
+  </div>
+
+  <!-- ================= FIREBASE & JS ================= -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { 
+      getDatabase, 
+      ref, 
+      push, 
+      set, 
+      get, 
+      query, 
+      orderByChild, 
+      equalTo,
+      onValue 
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
+      appId: '1:205492068242:web:04e1bd80de8974aa4eeb4b',
+      messagingSenderId: '205492068242',
+      projectId: 'feedy-cebf6',
+      authDomain: 'feedy-cebf6.firebaseapp.com',
+      databaseURL: 'https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app',
+      storageBucket: 'feedy-cebf6.firebasestorage.app',
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // DOM Elements
+    const loadingSection = document.getElementById("loadingSection");
+    const errorSection = document.getElementById("errorSection");
+    const errorMessage = document.getElementById("errorMessage");
+    const surveySection = document.getElementById("surveySection");
+    const surveyTitle = document.getElementById("surveyTitle");
+    const surveyForm = document.getElementById("surveyForm");
+    const questionsContainer = document.getElementById("questionsContainer");
+    const submitSurveyBtn = document.getElementById("submitSurveyBtn");
+    const feedbackSection = document.getElementById("feedbackSection");
+    const feedbackForm = document.getElementById("feedbackForm");
+    const thankYouSection = document.getElementById("thankYouSection");
+    const submitAnotherBtn = document.getElementById("submitAnotherBtn");
+
+    let activeSurvey = null;
+    let activeSurveyId = null;
+
+    // Fetch active survey from Firebase
+    async function fetchActiveSurvey() {
+      try {
+        const surveysRef = ref(db, 'surveys');
+        const snapshot = await get(surveysRef);
+
+        if (!snapshot.exists()) {
+          showError("No surveys found in database.");
+          return;
+        }
+
+        const surveys = snapshot.val();
+        
+        // Find the active survey
+        for (const [surveyId, survey] of Object.entries(surveys)) {
+          if (survey.isActive === true) {
+            activeSurvey = survey;
+            activeSurveyId = surveyId;
+            break;
+          }
+        }
+
+        if (!activeSurvey) {
+          showError("No active survey found. Please activate a survey in the database.");
+          return;
+        }
+
+        // Render the survey
+        renderSurvey();
+      } catch (error) {
+        console.error("Error fetching survey:", error);
+        showError("Error loading survey. Please try again later.");
+      }
+    }
+
+    // Show error message
+    function showError(message) {
+      loadingSection.classList.add("hidden");
+      errorMessage.textContent = message;
+      errorSection.classList.remove("hidden");
+    }
+
+    // Render survey questions dynamically
+    function renderSurvey() {
+      if (!activeSurvey) return;
+
+      // Set survey title
+      if (activeSurvey.title) {
+        surveyTitle.textContent = activeSurvey.title;
+      }
+
+      // Clear previous questions
+      questionsContainer.innerHTML = "";
+
+      // Get questions object
+      const questions = activeSurvey.questions || {};
+
+      // Filter questions that have value true (active questions)
+      const activeQuestions = Object.entries(questions).filter(([_, question]) => {
+        return question === true || (typeof question === 'object' && question.value === true);
+      });
+
+      if (activeQuestions.length === 0) {
+        showError("No active questions found in this survey.");
+        return;
+      }
+
+      // Render each question
+      activeQuestions.forEach(([questionId, questionData]) => {
+        const question = typeof questionData === 'object' ? questionData : { type: 'text' };
+        const questionElement = createQuestionElement(questionId, question);
+        questionsContainer.appendChild(questionElement);
+      });
+
+      // Show survey section
+      loadingSection.classList.add("hidden");
+      surveySection.classList.remove("hidden");
+    }
+
+    // Create question element based on type
+    function createQuestionElement(questionId, question) {
+      const questionDiv = document.createElement("div");
+      questionDiv.className = "space-y-2";
+
+      const label = document.createElement("label");
+      label.className = "block font-medium mb-1";
+      
+      // Get question text (could be in question.text, question.question, or use questionId)
+      const questionText = question.text || question.question || questionId;
+      label.textContent = questionText;
+      
+      // Add required indicator if needed
+      if (question.required !== false) {
+        const requiredSpan = document.createElement("span");
+        requiredSpan.className = "text-red-500";
+        requiredSpan.textContent = " *";
+        label.appendChild(requiredSpan);
+      }
+
+      questionDiv.appendChild(label);
+
+      const inputType = question.type || 'text';
+      let inputElement;
+
+      switch (inputType) {
+        case 'text':
+          inputElement = createTextInput(questionId, question);
+          break;
+        case 'rating':
+          inputElement = createRatingInput(questionId, question);
+          break;
+        case 'singleChoice':
+          inputElement = createSingleChoiceInput(questionId, question);
+          break;
+        case 'multipleChoice':
+          inputElement = createMultipleChoiceInput(questionId, question);
+          break;
+        case 'true/false':
+        case 'trueFalse':
+        case 'boolean':
+          inputElement = createTrueFalseInput(questionId, question);
+          break;
+        default:
+          inputElement = createTextInput(questionId, question);
+      }
+
+      questionDiv.appendChild(inputElement);
+
+      // Add error message element
+      const errorSpan = document.createElement("span");
+      errorSpan.className = "text-red-500 text-sm hidden";
+      errorSpan.id = `error-${questionId}`;
+      questionDiv.appendChild(errorSpan);
+
+      return questionDiv;
+    }
+
+    // Create text input
+    function createTextInput(questionId, question) {
+      const isTextarea = question.multiline === true || question.rows > 1;
+      
+      if (isTextarea) {
+        const textarea = document.createElement("textarea");
+        textarea.className = "w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+        textarea.name = questionId;
+        textarea.rows = question.rows || 4;
+        if (question.required !== false) {
+          textarea.required = true;
+        }
+        if (question.placeholder) {
+          textarea.placeholder = question.placeholder;
+        }
+        return textarea;
+      } else {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+        input.name = questionId;
+        if (question.required !== false) {
+          input.required = true;
+        }
+        if (question.placeholder) {
+          input.placeholder = question.placeholder;
+        }
+        return input;
+      }
+    }
+
+    // Create rating input (1-5 stars or 1-10)
+    function createRatingInput(questionId, question) {
+      const maxRating = question.maxRating || 5;
+      const container = document.createElement("div");
+      container.className = "flex flex-wrap gap-2";
+
+      for (let i = 1; i <= maxRating; i++) {
+        const label = document.createElement("label");
+        label.className = "flex items-center cursor-pointer";
+        
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = questionId;
+        input.value = i;
+        input.className = "mr-1";
+        if (question.required !== false) {
+          input.required = true;
+        }
+
+        const span = document.createElement("span");
+        span.className = "text-2xl";
+        span.textContent = "⭐";
+
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+      }
+
+      return container;
+    }
+
+    // Create single choice input (radio buttons)
+    function createSingleChoiceInput(questionId, question) {
+      const options = question.options || [];
+      const container = document.createElement("div");
+      container.className = "space-y-2";
+
+      options.forEach((option, index) => {
+        const label = document.createElement("label");
+        label.className = "flex items-center cursor-pointer p-2 hover:bg-gray-50 rounded";
+
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = questionId;
+        input.value = typeof option === 'string' ? option : option.value || option.label || `option${index}`;
+        input.className = "mr-2";
+        if (question.required !== false) {
+          input.required = true;
+        }
+
+        const span = document.createElement("span");
+        span.textContent = typeof option === 'string' ? option : (option.label || option.value || `Option ${index + 1}`);
+
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+      });
+
+      return container;
+    }
+
+    // Create multiple choice input (checkboxes)
+    function createMultipleChoiceInput(questionId, question) {
+      const options = question.options || [];
+      const container = document.createElement("div");
+      container.className = "space-y-2";
+
+      options.forEach((option, index) => {
+        const label = document.createElement("label");
+        label.className = "flex items-center cursor-pointer p-2 hover:bg-gray-50 rounded";
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = `${questionId}[]`;
+        input.value = typeof option === 'string' ? option : option.value || option.label || `option${index}`;
+        input.className = "mr-2";
+
+        const span = document.createElement("span");
+        span.textContent = typeof option === 'string' ? option : (option.label || option.value || `Option ${index + 1}`);
+
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+      });
+
+      return container;
+    }
+
+    // Create true/false input
+    function createTrueFalseInput(questionId, question) {
+      const container = document.createElement("div");
+      container.className = "flex gap-4";
+
+      const trueLabel = document.createElement("label");
+      trueLabel.className = "flex items-center cursor-pointer p-2 hover:bg-gray-50 rounded flex-1 justify-center border rounded-lg";
+      
+      const trueInput = document.createElement("input");
+      trueInput.type = "radio";
+      trueInput.name = questionId;
+      trueInput.value = "true";
+      trueInput.className = "mr-2";
+      if (question.required !== false) {
+        trueInput.required = true;
+      }
+
+      const trueSpan = document.createElement("span");
+      trueSpan.textContent = "True";
+
+      trueLabel.appendChild(trueInput);
+      trueLabel.appendChild(trueSpan);
+
+      const falseLabel = document.createElement("label");
+      falseLabel.className = "flex items-center cursor-pointer p-2 hover:bg-gray-50 rounded flex-1 justify-center border rounded-lg";
+
+      const falseInput = document.createElement("input");
+      falseInput.type = "radio";
+      falseInput.name = questionId;
+      falseInput.value = "false";
+      falseInput.className = "mr-2";
+      if (question.required !== false) {
+        falseInput.required = true;
+      }
+
+      const falseSpan = document.createElement("span");
+      falseSpan.textContent = "False";
+
+      falseLabel.appendChild(falseInput);
+      falseLabel.appendChild(falseSpan);
+
+      container.appendChild(trueLabel);
+      container.appendChild(falseLabel);
+
+      return container;
+    }
+
+    // Validate survey form
+    function validateSurveyForm() {
+      let isValid = true;
+      const formData = new FormData(surveyForm);
+
+      // Clear previous errors
+      document.querySelectorAll('[id^="error-"]').forEach(el => {
+        el.classList.add("hidden");
+      });
+
+      // Check each question
+      const questions = activeSurvey.questions || {};
+      Object.entries(questions).forEach(([questionId, questionData]) => {
+        const question = typeof questionData === 'object' ? questionData : { type: 'text' };
+        
+        // Skip if question is not active
+        if (question !== true && question.value !== true) return;
+
+        // Check if required
+        if (question.required === false) return;
+
+        const errorElement = document.getElementById(`error-${questionId}`);
+        
+        if (question.type === 'multipleChoice') {
+          // For checkboxes, check if at least one is selected
+          const checkboxes = surveyForm.querySelectorAll(`input[name="${questionId}[]"]:checked`);
+          if (checkboxes.length === 0) {
+            isValid = false;
+            if (errorElement) {
+              errorElement.textContent = "Please select at least one option";
+              errorElement.classList.remove("hidden");
+            }
+          }
+        } else {
+          // For other inputs, check if value exists
+          const value = formData.get(questionId);
+          if (!value || value.trim() === '') {
+            isValid = false;
+            if (errorElement) {
+              errorElement.textContent = "This field is required";
+              errorElement.classList.remove("hidden");
+            }
+          }
+        }
+      });
+
+      return isValid;
+    }
+
+    // Survey Form Submission
+    surveyForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      // Validate form
+      if (!validateSurveyForm()) {
+        return;
+      }
+
+      submitSurveyBtn.disabled = true;
+      submitSurveyBtn.textContent = "Submitting...";
+
+      try {
+        // Collect survey data
+        const formData = new FormData(surveyForm);
+        const surveyData = {};
+
+        // Process form data
+        for (const [key, value] of formData.entries()) {
+          if (key.endsWith('[]')) {
+            // Handle multiple choice (checkboxes)
+            const questionId = key.replace('[]', '');
+            if (!surveyData[questionId]) {
+              surveyData[questionId] = [];
+            }
+            surveyData[questionId].push(value);
+          } else {
+            surveyData[key] = value;
+          }
+        }
+
+        // Convert arrays to comma-separated strings if needed
+        Object.keys(surveyData).forEach(key => {
+          if (Array.isArray(surveyData[key])) {
+            surveyData[key] = surveyData[key].join(', ');
+          }
+        });
+
+        // Add timestamp
+        surveyData.submittedAt = new Date().toISOString();
+
+        // Save to Firebase
+        const surveyRef = ref(db, 'survey_responses');
+        const newSurveyRef = push(surveyRef);
+
+        await set(newSurveyRef, surveyData);
+
+        console.log("Survey saved:", surveyData);
+
+        // Move to feedback section
+        surveySection.classList.add("hidden");
+        feedbackSection.classList.remove("hidden");
+      } catch (error) {
+        console.error("Error saving survey:", error);
+        alert("Error saving survey. Please try again.");
+      } finally {
+        submitSurveyBtn.disabled = false;
+        submitSurveyBtn.textContent = "Submit Survey";
+      }
+    });
+
+    // Validate feedback form
+    function validateFeedbackForm() {
+      const rating = document.getElementById("feedbackRating").value;
+      const comments = document.getElementById("feedbackComments").value.trim();
+      let isValid = true;
+
+      const ratingError = document.getElementById("ratingError");
+      const commentsError = document.getElementById("commentsError");
+
+      // Clear previous errors
+      ratingError.classList.add("hidden");
+      commentsError.classList.add("hidden");
+
+      if (!rating) {
+        ratingError.classList.remove("hidden");
+        isValid = false;
+      }
+
+      if (!comments) {
+        commentsError.classList.remove("hidden");
+        isValid = false;
+      }
+
+      return isValid;
+    }
+
+    // Feedback Form Submission
+    feedbackForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      // Validate form
+      if (!validateFeedbackForm()) {
+        return;
+      }
+
+      // Collect feedback data
+      const feedbackData = {
+        name: document.getElementById("feedbackName").value.trim() || null,
+        email: document.getElementById("feedbackEmail").value.trim() || null,
+        rating: document.getElementById("feedbackRating").value,
+        comments: document.getElementById("feedbackComments").value.trim(),
+        created_at: new Date().toISOString()
+      };
+
+      try {
+        // Save to Firebase
+        const feedbackRef = ref(db, 'feedback');
+        const newFeedbackRef = push(feedbackRef);
+
+        await set(newFeedbackRef, feedbackData);
+
+        console.log("Feedback saved:", feedbackData);
+
+        // Move to thank you section
+        feedbackSection.classList.add("hidden");
+        thankYouSection.classList.remove("hidden");
+      } catch (error) {
+        console.error("Error saving feedback:", error);
+        alert("Error saving feedback. Please try again.");
+      }
+    });
+
+    // Submit Another Response
+    submitAnotherBtn.addEventListener("click", () => {
+      surveyForm.reset();
+      feedbackForm.reset();
+      thankYouSection.classList.add("hidden");
+      loadingSection.classList.remove("hidden");
+      errorSection.classList.add("hidden");
+      surveySection.classList.add("hidden");
+      feedbackSection.classList.add("hidden");
+      
+      // Reload survey
+      fetchActiveSurvey();
+    });
+
+    // Initialize: Fetch and render active survey
+    fetchActiveSurvey();
+  </script>
+
 </body>
 </html>

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../../data/models/survey_models.dart';
-import '../providers/feedback_provider.dart';
+import '../../../data/models/survey_models.dart';
+import '../../providers/feedback_provider.dart';
 
 /// Configuration screen for building dynamic survey questions
 /// Allows adding, editing, and deleting survey questions

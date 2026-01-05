@@ -6,18 +6,24 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:feedy/data/repositories/feedback_repository.dart';
 import 'package:feedy/data/database/database_helper.dart';
+import 'package:feedy/domain/use_cases/submit_feedback_use_case.dart';
 import 'package:feedy/presentation/providers/feedback_provider.dart';
+import 'package:feedy/presentation/providers/public_submission_provider.dart';
 import 'package:feedy/presentation/screens/welcome_screen.dart';
-import 'package:feedy/presentation/screens/login_screen.dart';
 import 'package:feedy/presentation/screens/signup_screen.dart';
-import 'package:feedy/presentation/screens/dashboard_screen.dart';
-import 'package:feedy/presentation/screens/feedback_form_screen.dart';
-import 'package:feedy/presentation/screens/configuration_screen.dart';
-import 'package:feedy/presentation/screens/survey_list_screen.dart';
-import 'package:feedy/presentation/screens/settings_screen.dart';
-import 'package:feedy/presentation/screens/survey_screen.dart';
-import 'package:feedy/presentation/screens/feedback_list_screen.dart';
-import 'package:feedy/presentation/screens/survey_response_list_screen.dart';
+// Admin screens
+import 'package:feedy/presentation/screens/admin/login_screen.dart';
+import 'package:feedy/presentation/screens/admin/dashboard_screen.dart';
+import 'package:feedy/presentation/screens/admin/configuration_screen.dart';
+import 'package:feedy/presentation/screens/admin/survey_list_screen.dart';
+import 'package:feedy/presentation/screens/admin/settings_screen.dart';
+import 'package:feedy/presentation/screens/admin/feedback_list_screen.dart';
+import 'package:feedy/presentation/screens/admin/survey_response_list_screen.dart';
+// Public screens
+import 'package:feedy/presentation/screens/public/feedback_form_screen.dart';
+import 'package:feedy/presentation/screens/public/survey_screen.dart';
+import 'package:feedy/presentation/screens/public/qr_feedback_web_screen.dart';
+import 'package:feedy/presentation/screens/public/thank_you_screen.dart';
 // Import firebase_options.dart after running: flutterfire configure
 import 'firebase_options.dart';
 
@@ -48,16 +54,27 @@ void main() async {
   // Create repository instance that will handle all data operations
   final feedbackRepository = FeedbackRepository(databaseHelper);
   
+  // Initialize use cases for dependency injection
+  final submitFeedbackUseCase = SubmitFeedbackUseCase(feedbackRepository);
+  
   // Start the Flutter app
-  runApp(MyApp(feedbackRepository: feedbackRepository));
+  runApp(MyApp(
+    feedbackRepository: feedbackRepository,
+    submitFeedbackUseCase: submitFeedbackUseCase,
+  ));
 }
 
 /// Root widget of the application
 /// Sets up the MaterialApp with theme, Provider for state management, and GoRouter for navigation
 class MyApp extends StatelessWidget {
   final FeedbackRepository feedbackRepository;
+  final SubmitFeedbackUseCase submitFeedbackUseCase;
 
-  const MyApp({super.key, required this.feedbackRepository});
+  const MyApp({
+    super.key,
+    required this.feedbackRepository,
+    required this.submitFeedbackUseCase,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -98,15 +115,6 @@ class MyApp extends StatelessWidget {
           path: '/settings',
           builder: (context, state) => const SettingsScreen(),
         ),
-        // Public flow
-        GoRoute(
-          path: '/feedback',
-          builder: (context, state) => const FeedbackFormScreen(),
-        ),
-        GoRoute(
-          path: '/survey',
-          builder: (context, state) => const SurveyScreen(),
-        ),
         // Result views (Admin)
         GoRoute(
           path: '/feedback-results',
@@ -116,12 +124,40 @@ class MyApp extends StatelessWidget {
           path: '/survey-results',
           builder: (context, state) => const SurveyResponseListScreen(),
         ),
+        // Public flow
+        GoRoute(
+          path: '/feedback',
+          builder: (context, state) => const FeedbackFormScreen(),
+        ),
+        GoRoute(
+          path: '/survey',
+          builder: (context, state) => const SurveyScreen(),
+        ),
+        // QR code web form
+        GoRoute(
+          path: '/qr-feedback',
+          builder: (context, state) => const QrFeedbackWebScreen(),
+        ),
+        // Thank you page
+        GoRoute(
+          path: '/thank-you',
+          builder: (context, state) => const ThankYouScreen(),
+        ),
       ],
     );
 
-    // Provide FeedbackProvider to the widget tree using Provider package
-    return ChangeNotifierProvider(
-      create: (_) => FeedbackProvider(feedbackRepository),
+    // Provide providers to the widget tree using MultiProvider
+    return MultiProvider(
+      providers: [
+        // Admin provider (full access)
+        ChangeNotifierProvider(
+          create: (_) => FeedbackProvider(feedbackRepository),
+        ),
+        // Public provider (submission only)
+        ChangeNotifierProvider(
+          create: (_) => PublicSubmissionProvider(submitFeedbackUseCase),
+        ),
+      ],
       child: MaterialApp.router(
         title: 'Feedy - Feedback Collection',
         theme: ThemeData(

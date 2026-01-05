@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Welcome screen that serves as the entry point of the application
-/// Displays app title and provides navigation to feedback form and admin login
+/// Displays app title, QR code for feedback, and navigation to feedback form and admin login
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
+
+  /// Generates the QR code URL for the feedback form
+  /// Uses the current web URL or constructs a relative path
+  String _getQrCodeUrl() {
+    if (kIsWeb) {
+      // For web, use the current origin + path
+      final uri = Uri.base;
+      return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/qr-feedback';
+    } else {
+      // For mobile/desktop, use a placeholder or relative path
+      return '/qr-feedback';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +51,40 @@ class WelcomeScreen extends StatelessWidget {
                       color: Colors.grey,
                     ),
                   ),
-                  const SizedBox(height: 64),
+                  const SizedBox(height: 32),
+                  // QR Code for feedback
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Scan to Give Feedback',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          QrImageView(
+                            data: _getQrCodeUrl(),
+                            version: QrVersions.auto,
+                            size: 200.0,
+                            backgroundColor: Colors.white,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Scan with your phone',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
                   // Give Feedback button at bottom center
                   SizedBox(
                     width: double.infinity,

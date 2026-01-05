@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/feedback_provider.dart';
-import '../../data/models/survey_models.dart';
+import '../../providers/feedback_provider.dart';
+import '../../../data/models/survey_models.dart';
 import 'package:intl/intl.dart';
 
 /// Screen displaying a list of all survey forms

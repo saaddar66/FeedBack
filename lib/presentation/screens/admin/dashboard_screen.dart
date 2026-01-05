@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../providers/feedback_provider.dart';
-import '../widgets/rating_chart.dart';
-import '../widgets/trends_chart.dart';
-import '../widgets/filter_dialog.dart';
-import '../models/selector_models.dart';
-import '../../data/models/feedback_model.dart';
+import '../../providers/feedback_provider.dart';
+import '../../widgets/rating_chart.dart';
+import '../../widgets/trends_chart.dart';
+import '../../widgets/filter_dialog.dart';
+import '../../models/selector_models.dart';
+import '../../../data/models/feedback_model.dart';
 
 /// Dashboard screen displaying feedback statistics, charts, and recent feedback
 /// Shows total feedback count, average rating, rating distribution chart,

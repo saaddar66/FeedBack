@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/feedback_provider.dart';
+import '../../providers/public_submission_provider.dart';
 
 /// Screen for submitting new feedback
 /// Contains form fields for name (optional), email (optional),
@@ -47,9 +47,9 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
 
     setState(() => _isSubmitting = true);
 
-    final provider = context.read<FeedbackProvider>();
+    final provider = context.read<PublicSubmissionProvider>();
     // Submit feedback through provider
-    final success = await provider.submitFeedback(
+    final success = await provider.submitPublicFeedback(
       name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
       email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
       rating: _selectedRating,

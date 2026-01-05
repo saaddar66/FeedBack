@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/local/sqlite_database_helper.dart';
+import '../../../data/local/sqlite_database_helper.dart';
 
 /// Login screen for admin authentication
 /// Contains email and password fields with a login button

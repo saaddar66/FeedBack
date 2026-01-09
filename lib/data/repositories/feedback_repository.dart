@@ -106,8 +106,8 @@ class FeedbackRepository {
    // --- Survey Methods ---
  
   /// Retrieves all surveys
-  Future<List<SurveyForm>> getAllSurveys() async {
-    return await _databaseHelper.getAllSurveys();
+  Future<List<SurveyForm>> getAllSurveys({String? creatorId}) async {
+    return await _databaseHelper.getAllSurveys(creatorId: creatorId);
   }
 
   /// Saves a survey (create/update)
@@ -139,5 +139,15 @@ class FeedbackRepository {
   /// Retrieves all survey responses
   Future<List<Map<String, dynamic>>> getSurveyResponses() async {
     return await _databaseHelper.getAllSurveyResponses();
+  }
+
+  /// Deletes a specific feedback entry
+  Future<void> deleteFeedback(String id) async {
+    await _databaseHelper.deleteFeedback(id);
+  }
+
+  /// Deletes a survey response
+  Future<void> deleteSurveyResponse(String id) async {
+    await _databaseHelper.deleteSurveyResponse(id);
   }
 }

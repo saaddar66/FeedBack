@@ -1,7 +1,4 @@
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-import 'package:sqflite_common/sqflite_dev.dart';
-
 void configureDatabase() {
-  // Initialize for Web
-  databaseFactory = databaseFactoryFfiWeb;
+  // Web uses Mock Sqflite or other implementation
+  // No FFI setup needed
 }

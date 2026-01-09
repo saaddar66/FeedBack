@@ -3,15 +3,15 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../providers/feedback_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/rating_chart.dart';
 import '../../widgets/trends_chart.dart';
 import '../../widgets/filter_dialog.dart';
 import '../../models/selector_models.dart';
 import '../../../data/models/feedback_model.dart';
 
-/// Dashboard screen displaying feedback statistics, charts, and recent feedback
-/// Shows total feedback count, average rating, rating distribution chart,
-/// trends over time, and a list of recent feedback entries
+/// Production-ready dashboard with stats charts filters and recent feedback
+/// Features loading states error handling pull to refresh and responsive layout
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -20,157 +20,320 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  bool _hasError = false;
+  String _errorMessage = '';
+  DateTime? _lastRefreshTime;
+
   @override
   void initState() {
     super.initState();
-    // Load feedback data after the first frame is rendered
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<FeedbackProvider>().loadFeedback();
-    });
+    _loadDashboardData();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Feedback Dashboard'),
-        actions: [
+  /// Loads all dashboard data with comprehensive error handling
+  Future<void> _loadDashboardData() async {
+    if (!mounted) return;
+    
+    setState(() {
+      _hasError = false;
+    });
 
-          // Filter button to open filter dialog
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () => _showFilterDialog(context),
-            tooltip: 'Filter',
+    try {
+      await context.read<FeedbackProvider>().loadFeedback();
+      
+      if (mounted) {
+        setState(() => _lastRefreshTime = DateTime.now());
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e.toString();
+        });
+        _showErrorSnackbar('Error loading dashboard: $e');
+      }
+    }
+  }
+
+  /// Handles logout with confirmation dialog
+  Future<void> _handleLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
           ),
-          // Refresh button to reload feedback data
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => context.read<FeedbackProvider>().loadFeedback(),
-            tooltip: 'Refresh',
-          ),
-          // Logout button
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => context.go('/'),
-            tooltip: 'Logout',
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Logout'),
           ),
         ],
       ),
-      // Use Selector for loading state to minimize rebuilds
-      body: Selector<FeedbackProvider, bool>(
-        selector: (_, provider) => provider.isLoading,
-        builder: (context, isLoading, child) {
-          // Show loading indicator while data is being fetched
-          if (isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    );
 
-          return RefreshIndicator(
-            onRefresh: () => context.read<FeedbackProvider>().loadFeedback(),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isDesktop = constraints.maxWidth >= 900;
-                final isTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900;
-                
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // S1: Stats Cards - Only rebuilds when totalFeedback or averageRating changes
-                      _buildStatsCardsSelector(),
-                      const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: TextButton.icon(
-                                onPressed: () => context.go('/feedback-results'),
-                                icon: const Icon(Icons.list_alt),
-                                label: const Text(
-                                  'View All Feedback',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: TextButton.icon(
-                                onPressed: () => context.go('/survey-results'),
-                                // Changed icon to imply "Results/Data" rather than "Table View"
-                                icon: const Icon(Icons.assessment_outlined),
-                                label: const Text(
-                                  'View All Surveys',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // S2: Filters
-                      _buildFiltersInfoSelector(),
-                      
-                      // S3: Charts Area - Only rebuilds when ratingDistribution or trendsData changes
-                      if (isDesktop)
-                        // Desktop: Side-by-Side Charts
-                        _buildChartsRowSelector()
-                      else
-                        // Tablet/Mobile: Stacked Charts
-                        _buildChartsColumnSelector(),
-                      
-                      const SizedBox(height: 24),
-                      // S4: Recent Feedback
-                      _buildRecentFeedbackSelector(),
-                    ],
-                  ),
-                );
-              },
-            ),
-          );
-        },
+    if (shouldLogout == true && mounted) {
+      context.read<AuthProvider>().logout();
+      context.go('/');
+    }
+  }
+
+  /// Shows success message in green snackbar
+  void _showSuccessSnackbar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(
-            top: BorderSide(color: Colors.grey.shade200, width: 1),
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                IconButton(
-                  onPressed: () => context.go('/config'),
-                  icon: const Icon(Icons.settings_applications),
-                  tooltip: 'Survey Configuration',
-                  iconSize: 28,
-                  color: Colors.blue,
-                ),
-                IconButton(
-                  onPressed: () => context.go('/settings'),
-                  icon: const Icon(Icons.settings),
-                  tooltip: 'Settings',
-                  iconSize: 28,
-                  color: Colors.grey[700],
-                ),
-              ],
-            ),
-          ),
+    );
+  }
+
+  /// Shows error message in red snackbar with retry
+  void _showErrorSnackbar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'Retry',
+          textColor: Colors.white,
+          onPressed: _loadDashboardData,
         ),
       ),
     );
   }
 
-  /// Builds the statistics cards row using Selector
-  /// Only rebuilds when totalFeedback or averageRating changes
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Feedback Dashboard'),
+            if (user != null)
+              Text(
+                'Welcome, ${user.name}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              ),
+          ],
+        ),
+        actions: [
+          // Filter button with active indicator badge
+          Selector<FeedbackProvider, bool>(
+            selector: (_, provider) => provider.hasActiveFilters,
+            builder: (context, hasFilters, _) {
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: hasFilters,
+                  child: const Icon(Icons.filter_list),
+                ),
+                onPressed: () => _showFilterDialog(context),
+                tooltip: 'Filter',
+              );
+            },
+          ),
+          
+          // Refresh button with loading state
+          Selector<FeedbackProvider, bool>(
+            selector: (_, provider) => provider.isLoading,
+            builder: (context, isLoading, _) {
+              return IconButton(
+                icon: isLoading 
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                onPressed: isLoading ? null : _loadDashboardData,
+                tooltip: 'Refresh',
+              );
+            },
+          ),
+          
+          // Logout button
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _handleLogout,
+            tooltip: 'Logout',
+          ),
+        ],
+      ),
+      
+      body: Selector<FeedbackProvider, bool>(
+        selector: (_, provider) => provider.isLoading,
+        builder: (context, isLoading, child) {
+          // Show loading on first load only
+          if (isLoading && context.read<FeedbackProvider>().feedbackList.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading dashboard...',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Show error state if data loading failed
+          if (_hasError && context.read<FeedbackProvider>().feedbackList.isEmpty) {
+            return _buildErrorState();
+          }
+
+          return _buildDashboardContent();
+        },
+      ),
+      
+      bottomNavigationBar: _buildBottomNavigationBar(),
+    );
+  }
+
+  /// Builds error state with retry button
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Colors.red[300],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Failed to load dashboard',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadDashboardData,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds main dashboard content with pull to refresh
+  Widget _buildDashboardContent() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadDashboardData();
+        if (mounted) {
+          _showSuccessSnackbar('Dashboard refreshed');
+        }
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+          final isTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900;
+          
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Last refresh time indicator
+                if (_lastRefreshTime != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last updated: ${_getTimeSinceRefresh()}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                  ),
+                
+                // Stats Cards with optimized selector
+                _buildStatsCardsSelector(),
+                const SizedBox(height: 16),
+                
+                // Quick action buttons
+                _buildQuickActionsRow(),
+                const SizedBox(height: 16),
+                
+                // Active filters info card
+                _buildFiltersInfoSelector(),
+                
+                // Charts area responsive layout
+                if (isDesktop)
+                  _buildChartsRowSelector()
+                else
+                  _buildChartsColumnSelector(),
+                
+                const SizedBox(height: 24),
+                
+                // Recent feedback list
+                _buildRecentFeedbackSelector(),
+                
+                // Bottom padding for better scrolling
+                const SizedBox(height: 80),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Builds quick action buttons for navigation
+  Widget _buildQuickActionsRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: _QuickActionCard(
+            icon: Icons.list_alt,
+            label: 'All Feedback',
+            color: Colors.blue,
+            onTap: () => context.go('/feedback-results'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _QuickActionCard(
+            icon: Icons.assessment_outlined,
+            label: 'All Surveys',
+            color: Colors.purple,
+            onTap: () => context.go('/survey-results'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Builds statistics cards with total count and average rating
   Widget _buildStatsCardsSelector() {
     return Selector<FeedbackProvider, StatsData>(
       selector: (_, provider) => StatsData(
@@ -186,6 +349,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: stats.totalFeedback.toString(),
                 icon: Icons.feedback,
                 color: Colors.blue,
+                subtitle: stats.totalFeedback == 1 ? 'response' : 'responses',
               ),
             ),
             const SizedBox(width: 12),
@@ -195,6 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: stats.averageRating.toStringAsFixed(1),
                 icon: Icons.star,
                 color: Colors.amber,
+                subtitle: _getRatingLabel(stats.averageRating),
               ),
             ),
           ],
@@ -203,7 +368,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Builds the charts row for desktop view using Selector
+  /// Builds charts in row layout for desktop view
   Widget _buildChartsRowSelector() {
     return Selector<FeedbackProvider, ChartData>(
       selector: (_, provider) => ChartData(
@@ -211,6 +376,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         provider.trendsData,
       ),
       builder: (context, data, child) {
+        // Show empty state if no data
+        if (data.ratingDistribution.isEmpty && data.trendsData.isEmpty) {
+          return _buildEmptyChartsState();
+        }
+        
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -231,7 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Builds the charts column for mobile/tablet view using Selector
+  /// Builds charts in column layout for mobile tablet view
   Widget _buildChartsColumnSelector() {
     return Selector<FeedbackProvider, ChartData>(
       selector: (_, provider) => ChartData(
@@ -239,6 +409,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         provider.trendsData,
       ),
       builder: (context, data, child) {
+        if (data.ratingDistribution.isEmpty && data.trendsData.isEmpty) {
+          return _buildEmptyChartsState();
+        }
+        
         return Column(
           children: [
             RatingChart(
@@ -254,9 +428,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Builds the filter information card using Selector
-  /// Shows active filters and provides a button to clear them
-  /// Only displays if at least one filter is active
+  /// Builds empty state for charts when no data
+  Widget _buildEmptyChartsState() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(48.0),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(
+                Icons.bar_chart_outlined,
+                size: 48,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No chart data available',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Builds active filters information card with clear button
   Widget _buildFiltersInfoSelector() {
     return Selector<FeedbackProvider, FilterData>(
       selector: (_, provider) => FilterData(
@@ -267,60 +467,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       builder: (context, filters, child) {
         final provider = context.read<FeedbackProvider>();
-        return _buildFiltersInfo(provider);
+        final hasFilters = provider.selectedMinRating != null ||
+            provider.selectedMaxRating != null ||
+            provider.startDate != null ||
+            provider.endDate != null;
+
+        if (!hasFilters) {
+          return const SizedBox.shrink();
+        }
+
+        return Card(
+          color: Colors.blue[50],
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              children: [
+                Icon(Icons.filter_alt, size: 20, color: Colors.blue[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _buildFilterText(provider),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.blue[900],
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    provider.clearFilters();
+                    _showSuccessSnackbar('Filters cleared');
+                  },
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+          ),
+        );
       },
     );
   }
 
-  /// Builds the filter information card
-  /// Shows active filters and provides a button to clear them
-  /// Only displays if at least one filter is active
-  Widget _buildFiltersInfo(FeedbackProvider provider) {
-    final hasFilters = provider.selectedMinRating != null ||
-        provider.selectedMaxRating != null ||
-        provider.startDate != null ||
-        provider.endDate != null;
-
-    // Don't show anything if no filters are active
-    if (!hasFilters) {
-      return const SizedBox.shrink();
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Row(
-          children: [
-            const Icon(Icons.filter_alt, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _buildFilterText(provider),
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            // Button to clear all filters
-            TextButton(
-              onPressed: () {
-                provider.clearFilters();
-              },
-              child: const Text('Clear'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Builds a human-readable string describing active filters
-  /// Formats rating range and date range filters
+  /// Builds human readable filter description text
   String _buildFilterText(FeedbackProvider provider) {
     final parts = <String>[];
+    
     if (provider.selectedMinRating != null || provider.selectedMaxRating != null) {
       final min = provider.selectedMinRating ?? 1;
       final max = provider.selectedMaxRating ?? 5;
-      parts.add('Rating: $min-$max');
+      parts.add('Rating: $min-$max ⭐');
     }
+    
     if (provider.startDate != null || provider.endDate != null) {
       final start = provider.startDate != null
           ? DateFormat('MMM d').format(provider.startDate!)
@@ -330,107 +528,236 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : 'End';
       parts.add('Date: $start - $end');
     }
-    return parts.join(' • ');
+    
+    return 'Active Filters: ${parts.join(' • ')}';
   }
 
-  /// Builds the recent feedback list widget using Selector
-  /// Only rebuilds when feedbackList changes
+  /// Builds recent feedback list with tap to view details
   Widget _buildRecentFeedbackSelector() {
     return Selector<FeedbackProvider, List<FeedbackModel>>(
       selector: (_, provider) => provider.feedbackList,
       builder: (context, feedbackList, child) {
-        final provider = context.read<FeedbackProvider>();
-        return _buildRecentFeedback(provider);
+        if (feedbackList.isEmpty) {
+          return _buildEmptyFeedbackState();
+        }
+
+        final recentFeedback = feedbackList.take(5).toList();
+        
+        return Card(
+          elevation: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Recent Feedback',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    TextButton(
+                      onPressed: () => context.go('/feedback-results'),
+                      child: const Text('View All'),
+                    ),
+                  ],
+                ),
+              ),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: recentFeedback.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final feedback = recentFeedback[index];
+                  return _buildFeedbackListItem(feedback, index);
+                },
+              ),
+            ],
+          ),
+        );
       },
     );
   }
 
-  /// Builds the recent feedback list widget
-  /// Shows up to 5 most recent feedback entries
-  /// Displays rating, name (or Anonymous), comments preview, and date
-  Widget _buildRecentFeedback(FeedbackProvider provider) {
-    if (provider.feedbackList.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: Center(
-            child: Text(
-              'No feedback yet',
-              style: TextStyle(color: Colors.grey),
-            ),
+  /// Builds single feedback list item with rating and details
+  Widget _buildFeedbackListItem(FeedbackModel feedback, int index) {
+    return ListTile(
+      leading: Hero(
+        tag: 'feedback_${feedback.id ?? index}',
+        child: CircleAvatar(
+          backgroundColor: _getRatingColor(feedback.rating),
+          child: Icon(
+            _getRatingIcon(feedback.rating),
+            color: Colors.white,
+            size: 20,
           ),
         ),
-      );
-    }
-
-    return Card(
-      child: Column(
+      ),
+      title: Text(
+        feedback.name ?? 'Anonymous User',
+        style: const TextStyle(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                const Text(
-                  'Recent Feedback',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          // List of feedback items (max 5)
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: provider.feedbackList.length > 5 ? 5 : provider.feedbackList.length,
-            itemBuilder: (context, index) {
-              final feedback = provider.feedbackList[index];
-              final heroTag = 'feedback_${feedback.id ?? index}';
-              return ListTile(
-                // Circular avatar with rating number, color-coded by rating value
-                leading: Hero(
-                  tag: heroTag,
-                  child: CircleAvatar(
-                    backgroundColor: _getRatingColor(feedback.rating),
-                    child: Text(
-                      feedback.rating.toString(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                // Name or "Anonymous" if no name provided
-                title: Text(
-                  feedback.name ?? 'Anonymous',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                // Comments preview (max 2 lines)
-                subtitle: Text(
-                  feedback.comments,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                // Formatted creation date
-                trailing: Text(
-                  DateFormat('MMM d').format(feedback.createdAt),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              );
-            },
+          const SizedBox(height: 4),
+          Text(
+            feedback.comments.isEmpty ? 'No comments' : feedback.comments,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: Colors.grey[700]),
           ),
         ],
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getRatingColor(feedback.rating).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '${feedback.rating} ⭐',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: _getRatingColor(feedback.rating),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            DateFormat('MMM d').format(feedback.createdAt),
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        ],
+      ),
+      isThreeLine: true,
+      onTap: () => context.go('/feedback-results'),
+    );
+  }
+
+  /// Builds empty state when no feedback exists
+  Widget _buildEmptyFeedbackState() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(48.0),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(
+                Icons.inbox_outlined,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No feedback yet',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Feedback will appear here once customers submit responses',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  /// Returns a color based on rating value
-  /// Green for 4-5, Orange for 3, Red for 1-2
+  /// Builds bottom navigation bar with settings icons
+  Widget _buildBottomNavigationBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade200,
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _BottomNavButton(
+                icon: Icons.settings_applications,
+                label: 'Survey Config',
+                onPressed: () => context.go('/config'),
+                color: Colors.blue,
+              ),
+              _BottomNavButton(
+                icon: Icons.settings,
+                label: 'Settings',
+                onPressed: () => context.go('/settings'),
+                color: Colors.grey[700]!,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Returns time since last refresh in human readable format
+  String _getTimeSinceRefresh() {
+    if (_lastRefreshTime == null) return 'Never';
+    
+    final difference = DateTime.now().difference(_lastRefreshTime!);
+    
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return DateFormat('h:mm a').format(_lastRefreshTime!);
+    }
+  }
+
+  /// Returns rating label based on average rating value
+  String _getRatingLabel(double rating) {
+    if (rating >= 4.5) return 'Excellent';
+    if (rating >= 4.0) return 'Very Good';
+    if (rating >= 3.5) return 'Good';
+    if (rating >= 3.0) return 'Average';
+    if (rating >= 2.0) return 'Below Average';
+    return 'Poor';
+  }
+
+  /// Returns color based on rating value
   Color _getRatingColor(int rating) {
     if (rating >= 4) return Colors.green;
     if (rating >= 3) return Colors.orange;
     return Colors.red;
   }
 
-  /// Shows the filter dialog to allow users to set filters
+  /// Returns icon based on rating value
+  IconData _getRatingIcon(int rating) {
+    if (rating >= 4) return Icons.sentiment_very_satisfied;
+    if (rating >= 3) return Icons.sentiment_neutral;
+    return Icons.sentiment_very_dissatisfied;
+  }
+
+  /// Shows filter dialog to set rating and date filters
   void _showFilterDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -439,26 +766,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// Reusable stat card widget
-/// Displays an icon, value, and title in a card format with glassmorphic gradient
+/// Stat card widget showing metric with icon and gradient
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
+  final String subtitle;
 
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
+    required this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Determine gradient colors based on card type
-    final isTotalFeedback = icon == Icons.feedback;
-    final gradientColors = isTotalFeedback
+    final gradientColors = icon == Icons.feedback
         ? [Colors.blue.shade50, Colors.white]
         : [Colors.amber.shade50, Colors.white];
 
@@ -471,6 +797,13 @@ class _StatCard extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade200,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -480,23 +813,122 @@ class _StatCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(icon, color: color, size: 24),
+                Icon(icon, color: color, size: 28),
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: color,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[500],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Quick action card for navigation buttons
+class _QuickActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionCard({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom navigation button with icon and label
+class _BottomNavButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final Color color;
+
+  const _BottomNavButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 28, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: color,
               ),
             ),
           ],

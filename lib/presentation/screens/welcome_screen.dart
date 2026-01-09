@@ -12,12 +12,12 @@ class WelcomeScreen extends StatelessWidget {
   /// Uses the current web URL or constructs a relative path
   String _getQrCodeUrl() {
     if (kIsWeb) {
-      // For web, use the current origin + path
+      // For web, use the current origin + /#/survey route
       final uri = Uri.base;
-      return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/qr-feedback';
+      return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
     } else {
-      // For mobile/desktop, use a placeholder or relative path
-      return '/qr-feedback';
+      // For mobile/desktop, point to the hosted web app's survey route
+      return 'https://feedy-cebf6.web.app/#/survey'; 
     }
   }
 

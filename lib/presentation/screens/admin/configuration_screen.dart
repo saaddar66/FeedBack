@@ -14,14 +14,13 @@ class ConfigurationScreen extends StatefulWidget {
 }
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
-  // Controller for the survey form title
   late TextEditingController _surveyTitleController;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    // Do not load questions here, they are passed by the list screen into the provider's editing state
-    // Just initialize the title controller from the provider's editing survey
+    // Initialize title controller from provider's editing survey state
     final survey = context.read<FeedbackProvider>().editingSurvey;
     _surveyTitleController = TextEditingController(
       text: survey?.title ?? 'Untitled Survey'
@@ -30,15 +29,14 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
   @override
   void dispose() {
-    // Save questions when navigating away from configuration screen
-    context.read<FeedbackProvider>().saveSurveyQuestionsManually();
+    // Clean up title controller to prevent memory leaks
     _surveyTitleController.dispose();
     super.dispose();
   }
 
-  /// Adds a new empty question to the list
+  /// Adds new empty question to the survey form
   void _addQuestion() {
-     context.read<FeedbackProvider>().addSurveyQuestion(
+    context.read<FeedbackProvider>().addSurveyQuestion(
       QuestionModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: '',
@@ -47,42 +45,171 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     );
   }
 
-  /// Removes a question from the list at the given index
+  /// Removes question from survey at given index
   void _deleteQuestion(int index) {
     context.read<FeedbackProvider>().removeSurveyQuestion(index);
   }
 
-  /// Handles list reordering
+  /// Handles drag and drop reordering of questions
   void _onReorder(int oldIndex, int newIndex) {
     context.read<FeedbackProvider>().reorderSurveyQuestions(oldIndex, newIndex);
   }
 
-  /// Updates survey title in provider
+  /// Updates survey title in provider state
   void _updateSurveyTitle() {
     context.read<FeedbackProvider>().updateEditingSurveyTitle(_surveyTitleController.text);
   }
 
+  /// Validates survey has title and at least one question
+  bool _validateSurvey() {
+    final title = _surveyTitleController.text.trim();
+    final questions = context.read<FeedbackProvider>().surveyQuestions;
+
+    if (title.isEmpty) {
+      _showError('Please enter a survey title');
+      return false;
+    }
+
+    if (questions.isEmpty) {
+      _showError('Please add at least one question');
+      return false;
+    }
+
+    // Check if any questions have empty titles
+    for (int i = 0; i < questions.length; i++) {
+      if (questions[i].title.trim().isEmpty) {
+        _showError('Question ${i + 1} is missing a title');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Shows error message in red snackbar
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// Shows success message in green snackbar
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Saves survey to Firebase and navigates back to list
+  Future<void> _saveSurvey() async {
+    if (_isSaving) return;
+    
+    if (!_validateSurvey()) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      await context.read<FeedbackProvider>().saveEditingSurvey();
+      
+      // Small delay to ensure Firebase write completes
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (mounted) {
+        _showSuccess('Survey saved successfully');
+        
+        // Wait for snackbar to show before navigating
+        await Future.delayed(const Duration(milliseconds: 800));
+        
+        if (mounted) {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/config');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showError('Error saving survey: $e');
+      }
+    }
+  }
+
+  /// Handles back navigation with unsaved changes warning
+  Future<void> _handleBackNavigation() async {
+    // Show confirmation dialog if there are unsaved changes
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unsaved Changes'),
+        content: const Text('Do you want to save your changes before leaving?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Discard'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLeave == true) {
+      await _saveSurvey();
+    } else if (shouldLeave == false) {
+      if (mounted) {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/config');
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Consume questions from Provider
     final questions = context.watch<FeedbackProvider>().surveyQuestions;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Survey'),
+        actions: [
+          if (_isSaving)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: 'Save Survey',
+              onPressed: _saveSurvey,
+            ),
+        ],
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () async {
-            // Save before navigating
-            await context.read<FeedbackProvider>().saveSurveyQuestionsManually();
-            if (context.mounted) {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/config'); // Go back to list
-              }
-            }
-          },
+          onPressed: _isSaving ? null : _handleBackNavigation,
           tooltip: 'Back',
         ),
       ),
@@ -100,6 +227,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
               ),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               onChanged: (_) => _updateSurveyTitle(),
+              enabled: !_isSaving,
             ),
           ),
           
@@ -115,6 +243,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                         index: entry.key,
                         question: entry.value,
                         onDelete: () => _deleteQuestion(entry.key),
+                        isDisabled: _isSaving,
                       );
                     }).toList(),
                   ),
@@ -122,14 +251,14 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _addQuestion,
-        backgroundColor: Colors.blue,
+        onPressed: _isSaving ? null : _addQuestion,
+        backgroundColor: _isSaving ? Colors.grey : Colors.blue,
         child: const Icon(Icons.add),
       ),
     );
   }
 
-  /// Builds the empty state when no questions exist
+  /// Builds empty state when no questions exist yet
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -167,12 +296,14 @@ class _QuestionCard extends StatefulWidget {
   final int index;
   final QuestionModel question;
   final VoidCallback onDelete;
+  final bool isDisabled;
 
   const _QuestionCard({
     required Key key,
     required this.index,
     required this.question,
     required this.onDelete,
+    this.isDisabled = false,
   }) : super(key: key);
 
   @override
@@ -186,6 +317,7 @@ class _QuestionCardState extends State<_QuestionCard> {
   @override
   void initState() {
     super.initState();
+    // Initialize controllers with existing question data
     _titleController = TextEditingController(text: widget.question.title);
     _optionControllers = widget.question.options
         .map((opt) => TextEditingController(text: opt))
@@ -194,14 +326,16 @@ class _QuestionCardState extends State<_QuestionCard> {
 
   @override
   void dispose() {
+    // Dispose all controllers to prevent memory leaks
     _titleController.dispose();
     for (var controller in _optionControllers) {
       controller.dispose();
     }
-    _optionControllers.clear(); // Safety: clear list after disposal
+    _optionControllers.clear();
     super.dispose();
   }
 
+  /// Saves question changes to provider state
   void _saveQuestion() {
     final provider = context.read<FeedbackProvider>();
     final updatedQuestion = widget.question.copyWith(
@@ -211,6 +345,7 @@ class _QuestionCardState extends State<_QuestionCard> {
     provider.updateSingleSurveyQuestion(widget.index, updatedQuestion);
   }
 
+  /// Updates question type and saves to provider
   void _updateType(QuestionType? newType) {
     if (newType == null) return;
     final provider = context.read<FeedbackProvider>();
@@ -218,12 +353,14 @@ class _QuestionCardState extends State<_QuestionCard> {
     provider.updateSingleSurveyQuestion(widget.index, updatedQuestion);
   }
 
+  /// Adds new empty option to choice questions
   void _addOption() {
     setState(() {
       _optionControllers.add(TextEditingController());
     });
   }
 
+  /// Removes option at given index from question
   void _removeOption(int index) {
     setState(() {
       _optionControllers[index].dispose();
@@ -232,6 +369,7 @@ class _QuestionCardState extends State<_QuestionCard> {
     _saveQuestion();
   }
 
+  /// Checks if question type requires option choices
   bool _needsOptions() {
     return widget.question.type == QuestionType.singleChoice ||
         widget.question.type == QuestionType.multipleChoice;
@@ -246,7 +384,7 @@ class _QuestionCardState extends State<_QuestionCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Question number header
+            // Question number and delete button header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -259,14 +397,14 @@ class _QuestionCardState extends State<_QuestionCard> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: widget.onDelete,
+                  onPressed: widget.isDisabled ? null : widget.onDelete,
                   tooltip: 'Delete question',
                 ),
               ],
             ),
             const SizedBox(height: 16),
             
-            // Title TextField with controller
+            // Question title input field with auto save
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -275,10 +413,11 @@ class _QuestionCardState extends State<_QuestionCard> {
                 hintText: 'Enter your question here...',
               ),
               onChanged: (_) => _saveQuestion(),
+              enabled: !widget.isDisabled,
             ),
             const SizedBox(height: 16),
             
-            // QuestionType Dropdown
+            // Question type dropdown selector
             DropdownButtonFormField<QuestionType>(
               value: widget.question.type,
               decoration: const InputDecoration(
@@ -291,10 +430,10 @@ class _QuestionCardState extends State<_QuestionCard> {
                   child: Text(_getQuestionTypeLabel(type)),
                 );
               }).toList(),
-              onChanged: _updateType,
+              onChanged: widget.isDisabled ? null : _updateType,
             ),
             
-            // Options section for choice questions
+            // Options section for single and multiple choice questions
             if (_needsOptions()) ...[
               const SizedBox(height: 16),
               const Text(
@@ -315,18 +454,19 @@ class _QuestionCardState extends State<_QuestionCard> {
                             border: const OutlineInputBorder(),
                           ),
                           onChanged: (_) => _saveQuestion(),
+                          enabled: !widget.isDisabled,
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: () => _removeOption(entry.key),
+                        onPressed: widget.isDisabled ? null : () => _removeOption(entry.key),
                       ),
                     ],
                   ),
                 );
               }).toList(),
               TextButton.icon(
-                onPressed: _addOption,
+                onPressed: widget.isDisabled ? null : _addOption,
                 icon: const Icon(Icons.add),
                 label: const Text('Add Option'),
               ),
@@ -337,7 +477,7 @@ class _QuestionCardState extends State<_QuestionCard> {
     );
   }
 
-  /// Returns a human-readable label for QuestionType
+  /// Returns human readable label for question type enum
   String _getQuestionTypeLabel(QuestionType type) {
     switch (type) {
       case QuestionType.text:

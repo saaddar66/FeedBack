@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../providers/feedback_provider.dart';
 import '../../../data/models/survey_models.dart';
+import '../../widgets/mic_button.dart';
 
 class SurveyScreen extends StatefulWidget {
   const SurveyScreen({super.key});
@@ -128,12 +129,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
   Widget _buildAnswerInput(QuestionModel question) {
     switch (question.type) {
       case QuestionType.text:
-        return TextField(
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            hintText: 'Your answer...',
-          ),
-          maxLines: 3,
+        return _SurveyTextField(
+          initialValue: _answers[question.id] as String? ?? '',
           onChanged: (value) {
             setState(() {
               _answers[question.id] = value;
@@ -252,5 +249,63 @@ class _SurveyScreenState extends State<SurveyScreen> {
         ),
       );
     }
+  }
+}
+
+class _SurveyTextField extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+
+  const _SurveyTextField({
+    required this.initialValue,
+    required this.onChanged,
+  });
+
+  @override
+  State<_SurveyTextField> createState() => _SurveyTextFieldState();
+}
+
+class _SurveyTextFieldState extends State<_SurveyTextField> {
+  late TextEditingController _controller;
+  String _textBeforeListening = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      decoration: InputDecoration(
+        border: const OutlineInputBorder(),
+        hintText: 'Your answer...',
+        suffixIcon: MicButton(
+          onListeningStart: () {
+            _textBeforeListening = _controller.text;
+          },
+          onResult: (text) {
+             if (text.isNotEmpty) {
+               final prefix = _textBeforeListening.isEmpty ? '' : '$_textBeforeListening ';
+               final newText = '$prefix$text';
+               
+               _controller.text = newText;
+               _controller.selection = TextSelection.fromPosition(TextPosition(offset: newText.length));
+               widget.onChanged(newText);
+             }
+          },
+        ),
+      ),
+      maxLines: 3,
+      onChanged: widget.onChanged,
+    );
   }
 }

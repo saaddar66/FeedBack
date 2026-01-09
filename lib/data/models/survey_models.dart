@@ -47,16 +47,26 @@ class QuestionModel {
 
   /// Creates a QuestionModel from a database Map
   factory QuestionModel.fromMap(Map<String, dynamic> map) {
+    // Safely convert options - handle both List and Map formats
+    List<String> parsedOptions = [];
+    if (map['options'] != null) {
+      final optionsData = map['options'];
+      if (optionsData is List) {
+        parsedOptions = List<String>.from(optionsData);
+      } else if (optionsData is Map) {
+        // If options come as a Map, extract the values
+        parsedOptions = optionsData.values.map((v) => v.toString()).toList();
+      }
+    }
+
     return QuestionModel(
-      id: map['id'] ?? '',
-      title: map['title'] ?? '',
+      id: map['id']?.toString() ?? '', // Safely convert to string even if it's a number
+      title: map['title']?.toString() ?? '',
       type: QuestionType.values.firstWhere(
         (e) => e.name == map['type'],
         orElse: () => QuestionType.text,
       ),
-      options: map['options'] != null 
-          ? List<String>.from(map['options'] as List)
-          : [],
+      options: parsedOptions,
     );
   }
 }
@@ -68,6 +78,7 @@ class SurveyForm {
   bool isActive;
   List<QuestionModel> questions;
   final DateTime createdAt;
+  final String? creatorId;
 
   SurveyForm({
     required this.id,
@@ -75,6 +86,7 @@ class SurveyForm {
     this.isActive = false,
     List<QuestionModel>? questions,
     DateTime? createdAt,
+    this.creatorId,
   }) : questions = questions ?? [],
        createdAt = createdAt ?? DateTime.now();
 
@@ -82,6 +94,7 @@ class SurveyForm {
     String? title,
     bool? isActive,
     List<QuestionModel>? questions,
+    String? creatorId,
   }) {
     return SurveyForm(
       id: id,
@@ -89,6 +102,7 @@ class SurveyForm {
       isActive: isActive ?? this.isActive,
       questions: questions ?? this.questions,
       createdAt: createdAt,
+      creatorId: creatorId ?? this.creatorId,
     );
   }
 
@@ -99,22 +113,68 @@ class SurveyForm {
       'isActive': isActive,
       'questions': questions.map((q) => q.toMap()).toList(),
       'createdAt': createdAt.toIso8601String(),
+      'creatorId': creatorId,
     };
   }
 
   factory SurveyForm.fromMap(Map<String, dynamic> map) {
+    List<QuestionModel> parsedQuestions = [];
+
+    if (map['questions'] != null) {
+      final questionsData = map['questions'];
+      
+      // Skip if questions is a String (corrupted data)
+      if (questionsData is String) {
+        print('Warning: questions field is a String, skipping: $questionsData');
+      } else if (questionsData is List) {
+        // Handle as List (standard JSON array)
+        for (var q in questionsData) {
+          if (q is Map) {
+            try {
+              parsedQuestions.add(QuestionModel.fromMap(Map<String, dynamic>.from(q)));
+            } catch (e) {
+              print('Skipping invalid question in list: $e');
+            }
+          }
+        }
+      } else if (questionsData is Map) {
+        // Handle as Map (Firebase object structure {id: {data}})
+        questionsData.forEach((key, value) {
+          if (value is Map) {
+            try {
+              final questionMap = Map<String, dynamic>.from(value);
+              // Ensure ID is set (use key if ID is missing in value)
+              final existingId = questionMap['id'];
+              if (existingId == null || existingId.toString().isEmpty) {
+                questionMap['id'] = key.toString();
+              }
+              parsedQuestions.add(QuestionModel.fromMap(questionMap));
+            } catch (e) {
+              print('Skipping invalid question ($key): $e');
+            }
+          }
+        });
+      }
+    }
+
     return SurveyForm(
-      id: map['id'] ?? '',
-      title: map['title'] ?? 'Untitled Survey',
-      isActive: map['isActive'] ?? false,
-      questions: map['questions'] != null
-          ? (map['questions'] as List)
-              .map((q) => QuestionModel.fromMap(Map<String, dynamic>.from(q)))
-              .toList()
-          : [],
-      createdAt: map['createdAt'] != null 
-          ? DateTime.parse(map['createdAt']) 
-          : DateTime.now(),
+      id: map['id']?.toString() ?? '',
+      title: map['title']?.toString() ?? 'Untitled Survey',
+      isActive: map['isActive'] == true,
+      questions: parsedQuestions,
+      createdAt: _parseDateTime(map['createdAt']),
+      creatorId: map['creatorId']?.toString(),
     );
+  }
+
+  /// Safely parses a DateTime from various formats
+  static DateTime _parseDateTime(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is DateTime) return value;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (e) {
+      return DateTime.now();
+    }
   }
 }

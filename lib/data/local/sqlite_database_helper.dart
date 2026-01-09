@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite.dart' if (dart.library.html) 'sqflite_mock.dart';
 import 'package:path/path.dart';
 import '../models/user_model.dart';
 
@@ -91,6 +91,17 @@ class SqliteDatabaseHelper {
       whereArgs: [email],
     );
     return maps.isNotEmpty;
+  }
+
+  /// Updates user information
+  Future<int> updateUser(UserModel user) async {
+    final db = await instance.database;
+    return await db.update(
+      'users',
+      user.toMap(),
+      where: 'id = ?',
+      whereArgs: [user.id],
+    );
   }
 
   /// Closes the database connection

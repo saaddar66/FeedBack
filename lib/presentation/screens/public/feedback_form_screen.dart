@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/public_submission_provider.dart';
+import '../../widgets/mic_button.dart';
 
 /// Screen for submitting new feedback
 /// Contains form fields for name (optional), email (optional),
@@ -27,6 +28,9 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
   
   // Loading state during submission
   bool _isSubmitting = false;
+
+  // Store text state before listening started to handle partial results updates
+  String _textBeforeListening = '';
 
   @override
   void dispose() {
@@ -215,10 +219,29 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
                   // Comments input field (required)
                   TextFormField(
                     controller: _commentsController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Comments *',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                       alignLabelWithHint: true,
+                      suffixIcon: MicButton(
+                        onListeningStart: () {
+                          // Capture text before listening starts to prevent duplication
+                          _textBeforeListening = _commentsController.text;
+                        },
+                        onResult: (text) {
+                           if (text.isNotEmpty) {
+                             // Append new speech text to the CAPTURED original text
+                             // This prevents "Hello Hello World" duplication
+                             final prefix = _textBeforeListening.isEmpty ? '' : '$_textBeforeListening ';
+                             final newText = '$prefix$text';
+                             
+                             _commentsController.text = newText;
+                             _commentsController.selection = TextSelection.fromPosition(
+                               TextPosition(offset: newText.length)
+                             );
+                           }
+                        },
+                      ),
                     ),
                     maxLines: 5,
                     validator: (value) {

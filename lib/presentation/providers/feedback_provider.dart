@@ -88,6 +88,9 @@ class FeedbackProvider with ChangeNotifier {
   int? _selectedMaxRating;                         // Maximum rating filter
   DateTime? _startDate;                            // Start date filter
   DateTime? _endDate;                              // End date filter
+  
+  // Current user context for filtering
+  String? _currentUserId;
 
   // Survey config state
   List<SurveyForm> _surveys = [];
@@ -102,8 +105,16 @@ class FeedbackProvider with ChangeNotifier {
   List<SurveyForm> get surveys => List.unmodifiable(_surveys);
 
   /// Loads all surveys
-  Future<void> loadSurveys() async {
-    _surveys = await _repository.getAllSurveys();
+  Future<void> loadSurveys({String? userId}) async {
+    // If userId is provided, update our context. If not provided, keep existing context (or null) if we want to refresh current view.
+    // However, the previous logic was: if called without args, it was loading ALL.
+    // To support "reload current view", we should trust _currentUserId if userId is null? 
+    // Or we explicitly update _currentUserId only when non-null?
+    // Let's say: if userId passed, update _currentUserId. Then load using _currentUserId.
+    if (userId != null) {
+      _currentUserId = userId;
+    }
+    _surveys = await _repository.getAllSurveys(creatorId: _currentUserId);
     notifyListeners();
   }
 
@@ -118,7 +129,7 @@ class FeedbackProvider with ChangeNotifier {
       _activeSurvey != null ? List.unmodifiable(_activeSurvey!.questions) : [];
 
   /// Starts editing a survey (or creates a new one if null)
-  void startEditingSurvey(SurveyForm? survey) {
+  void startEditingSurvey(SurveyForm? survey, {String? creatorId}) {
     if (survey == null) {
       // Create new draft
       _editingSurvey = SurveyForm(
@@ -126,6 +137,7 @@ class FeedbackProvider with ChangeNotifier {
         title: 'Untitled Survey',
         isActive: false, // Default to inactive
         questions: [],
+        creatorId: creatorId,
       );
     } else {
       _editingSurvey = survey.copyWith(
@@ -182,7 +194,7 @@ class FeedbackProvider with ChangeNotifier {
   Future<void> saveEditingSurvey() async {
     if (_editingSurvey != null) {
       await _repository.saveSurvey(_editingSurvey!);
-      await loadSurveys(); // Refresh list
+      await loadSurveys(); // Refresh list using _currentUserId
     }
   }
   
@@ -194,13 +206,13 @@ class FeedbackProvider with ChangeNotifier {
   /// Deletes a survey
   Future<void> deleteSurvey(String surveyId) async {
     await _repository.deleteSurvey(surveyId);
-    await loadSurveys();
+    await loadSurveys(); // Reloads using _currentUserId
   }
 
   /// Toggles a survey's active state
   Future<void> toggleSurveyActive(String surveyId) async {
     await _repository.activateSurvey(surveyId);
-    await loadSurveys();
+    await loadSurveys(); // Reloads using _currentUserId
   }
 
   /// Submits survey answers
@@ -320,6 +332,36 @@ class FeedbackProvider with ChangeNotifier {
     _startDate = null;
     _endDate = null;
     loadFeedback();
+  }
+  
+  /// Checks if any filters are currently active
+  bool get hasActiveFilters => 
+    _selectedMinRating != null || 
+    _selectedMaxRating != null || 
+    _startDate != null || 
+    _endDate != null;
+
+  /// Deletes a specific feedback entry by ID
+  Future<void> deleteFeedback(String? id) async {
+    if (id == null) return;
+    try {
+      await _repository.deleteFeedback(id);
+      await loadFeedback(); // Reload list
+    } catch (e) {
+      debugPrint('Error deleting feedback: $e');
+      rethrow;
+    }
+  }
+
+  /// Deletes a specific survey response by ID
+  Future<void> deleteSurveyResponse(String id) async {
+    try {
+       await _repository.deleteSurveyResponse(id);
+       await loadSurveyResponses(); // Reload list (assuming getAllSurveyResponses is called somewhere or we need loadSurveyResponses)
+    } catch (e) {
+      debugPrint('Error deleting survey response: $e');
+      rethrow;
+    }
   }
 }
 

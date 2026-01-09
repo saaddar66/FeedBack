@@ -42,4 +42,23 @@ class UserModel {
       password: map['password'],
     );
   }
+
+  /// Creates a copy of this user with the given fields replaced with new values
+  UserModel copyWith({
+    int? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? businessName,
+    String? password,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      businessName: businessName ?? this.businessName,
+      password: password ?? this.password,
+    );
+  }
 }

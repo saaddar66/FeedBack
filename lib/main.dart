@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:feedy/config/database_config.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import 'package:feedy/data/database/database_helper.dart';
 import 'package:feedy/domain/use_cases/submit_feedback_use_case.dart';
 import 'package:feedy/presentation/providers/feedback_provider.dart';
 import 'package:feedy/presentation/providers/public_submission_provider.dart';
+import 'package:feedy/presentation/providers/auth_provider.dart';
 import 'package:feedy/presentation/screens/welcome_screen.dart';
 import 'package:feedy/presentation/screens/signup_screen.dart';
 // Admin screens
@@ -33,10 +35,14 @@ void main() async {
   // Ensure Flutter bindings are initialized before async operations
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Load environment variables for secure key management
+  await dotenv.load(fileName: ".env");
+  
+  
   // Initialize database factory based on platform (Web, Desktop, Mobile)
   configureDatabase();
   
-  // Initialize Firebase
+  // Initialize Firebase (handles platform specific setup)
   // After running 'flutterfire configure', uncomment the line below and comment the defaultOptions line
   try {
     await Firebase.initializeApp(
@@ -44,20 +50,20 @@ void main() async {
     );
   } catch (e) {
     print('Firebase initialization failed: $e');
-    // Continue anyway, DatabaseHelper will handle mock mode
+    // Continue anyway, DatabaseHelper will handle mock mode if needed
   }
   
-  // Initialize the database singleton instance
+  // Initialize the database singleton instance for offline storage
   final databaseHelper = DatabaseHelper.instance;
   await databaseHelper.initDatabase();
   
-  // Create repository instance that will handle all data operations
+  // Create repository instance that will handle all data operations and abstraction
   final feedbackRepository = FeedbackRepository(databaseHelper);
   
-  // Initialize use cases for dependency injection
+  // Initialize use cases for dependency injection into providers
   final submitFeedbackUseCase = SubmitFeedbackUseCase(feedbackRepository);
   
-  // Start the Flutter app
+  // Start the Flutter app with necessary dependencies injected
   runApp(MyApp(
     feedbackRepository: feedbackRepository,
     submitFeedbackUseCase: submitFeedbackUseCase,
@@ -149,6 +155,10 @@ class MyApp extends StatelessWidget {
     // Provide providers to the widget tree using MultiProvider
     return MultiProvider(
       providers: [
+        // Auth provider (session management)
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider(),
+        ),
         // Admin provider (full access)
         ChangeNotifierProvider(
           create: (_) => FeedbackProvider(feedbackRepository),

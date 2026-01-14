@@ -49,6 +49,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    // Remove listeners before disposing controllers to prevent memory leaks
+    _nameController.removeListener(_checkForChanges);
+    _emailController.removeListener(_checkForChanges);
+    _phoneController.removeListener(_checkForChanges);
+    
+    // Dispose controllers
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();

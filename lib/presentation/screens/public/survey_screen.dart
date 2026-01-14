@@ -20,7 +20,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<FeedbackProvider>().loadActiveSurvey();
+      // Get ownerId from query parameters to load the correct user's survey
+      final state = GoRouterState.of(context);
+      final ownerId = state.uri.queryParameters['uid'];
+      
+      context.read<FeedbackProvider>().loadActiveSurvey(userId: ownerId);
     });
   }
 
@@ -225,6 +229,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
     }
 
     try {
+      // Get ownerId from query parameters to link the response
+      final state = GoRouterState.of(context);
+      final ownerId = state.uri.queryParameters['uid'];
+      
+      // Set current user context if ownerId is available
+      if (ownerId != null) {
+        context.read<FeedbackProvider>().setCurrentUser(ownerId);
+      }
+      
       await context.read<FeedbackProvider>().submitSurveyAnswers(_answers);
       
       if (!mounted) return;

@@ -17,6 +17,7 @@ class FeedbackRepository {
     String? email,
     required int rating,
     required String comments,
+    String? ownerId,
   }) async {
     final feedback = FeedbackModel(
       name: name?.isEmpty == true ? null : name,
@@ -24,6 +25,7 @@ class FeedbackRepository {
       rating: rating,
       comments: comments,
       createdAt: DateTime.now(),
+      ownerId: ownerId,
     );
 
     return await _databaseHelper.insertFeedback(feedback);
@@ -38,6 +40,7 @@ class FeedbackRepository {
     DateTime? startDate,
     DateTime? endDate,
     int limit = 100,
+    String? userId,
   }) async {
     return await _databaseHelper.getAllFeedback(
       minRating: minRating,
@@ -45,6 +48,7 @@ class FeedbackRepository {
       startDate: startDate,
       endDate: endDate,
       limit: limit,
+      userId: userId,
     );
   }
 
@@ -54,12 +58,14 @@ class FeedbackRepository {
     int? maxRating,
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     return await _databaseHelper.getFeedbackCount(
       minRating: minRating,
       maxRating: maxRating,
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
   }
 
@@ -68,10 +74,12 @@ class FeedbackRepository {
   Future<Map<int, int>> getRatingDistribution({
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     return await _databaseHelper.getRatingDistribution(
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
   }
 
@@ -80,10 +88,12 @@ class FeedbackRepository {
   Future<List<Map<String, dynamic>>> getTrendsData({
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     return await _databaseHelper.getTrendsData(
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
   }
 
@@ -92,10 +102,12 @@ class FeedbackRepository {
   Future<double> getAverageRating({
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     return await _databaseHelper.getAverageRating(
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
   }
 
@@ -126,19 +138,19 @@ class FeedbackRepository {
   }
 
   /// Gets the currently active survey
-  Future<SurveyForm?> getActiveSurvey() async {
-    return await _databaseHelper.getActiveSurvey();
+  Future<SurveyForm?> getActiveSurvey({String? userId}) async {
+    return await _databaseHelper.getActiveSurvey(creatorId: userId);
   }
 
   /// Submits a set of answers for the survey
   /// [answers] is a map where key is question ID and value is the user's answer
-  Future<void> submitSurveyResponse(Map<String, dynamic> answers) async {
-    await _databaseHelper.submitSurveyResponse(answers);
+  Future<void> submitSurveyResponse(Map<String, dynamic> answers, {String? ownerId}) async {
+    await _databaseHelper.submitSurveyResponse(answers, ownerId: ownerId);
   }
 
-  /// Retrieves all survey responses
-  Future<List<Map<String, dynamic>>> getSurveyResponses() async {
-    return await _databaseHelper.getAllSurveyResponses();
+  /// Retrieves all survey responses, optionally filtered by ownerId
+  Future<List<Map<String, dynamic>>> getSurveyResponses({String? ownerId}) async {
+    return await _databaseHelper.getAllSurveyResponses(ownerId: ownerId);
   }
 
   /// Deletes a specific feedback entry

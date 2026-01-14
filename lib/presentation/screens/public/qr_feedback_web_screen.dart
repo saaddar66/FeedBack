@@ -42,6 +42,10 @@ class _QrFeedbackWebScreenState extends State<QrFeedbackWebScreen> {
       return;
     }
 
+    // Get ownerId from query parameters
+    final state = GoRouterState.of(context);
+    final ownerId = state.uri.queryParameters['uid'];
+
     final provider = context.read<PublicSubmissionProvider>();
     // Submit feedback through provider
     final success = await provider.submitPublicFeedback(
@@ -49,7 +53,15 @@ class _QrFeedbackWebScreenState extends State<QrFeedbackWebScreen> {
       email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
       rating: _selectedRating,
       comments: _commentsController.text.trim(),
+      ownerId: ownerId,
     );
+    
+    // Clear error if success (though we navigate away) or keep it if failed
+    if (success) {
+        provider.clearError();
+    } else {
+        // Validation error is already set in provider if any
+    }
 
     if (mounted) {
       if (success) {

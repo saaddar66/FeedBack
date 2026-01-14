@@ -39,6 +39,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
+      // Set current user context before loading data
+      final userId = context.read<AuthProvider>().user?.id;
+      if (userId != null) {
+        context.read<FeedbackProvider>().setCurrentUser(userId);
+      }
+      
       await context.read<FeedbackProvider>().loadFeedback();
       
       if (mounted) {

@@ -1,6 +1,7 @@
 import 'package:firebase_database/firebase_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/feedback_model.dart';
+import '../models/user_model.dart';
 import '../models/survey_models.dart';
 import 'dart:math';
 import 'dart:convert';
@@ -27,18 +28,23 @@ class DatabaseHelper {
   /// Should be called at app startup
   Future<void> initDatabase() async {
     try {
-      // Try to get the reference. If Firebase isn't initialized, this might throw
-      // or subsequent operations will throw.
+      // Enable offline persistence
+      FirebaseDatabase.instance.setPersistenceEnabled(true);
+      
       _databaseRef = FirebaseDatabase.instance.ref('feedback');
       
-      // dedicated check to see if we can actually use it
-      await _databaseRef!.limitToFirst(1).get();
+      // Optional: Check connection status, but don't block or switch to mock
+      // This allows the app to start offline using cached data
+      try {
+        await _databaseRef!.limitToFirst(1).get().timeout(const Duration(seconds: 2));
+      } catch (e) {
+        print('Note: Starting in OFFLINE mode (Firebase not reachable immediately)');
+      }
       
     } catch (e) {
-      print('Firebase initialization failed or not configured: $e');
-      print('Switching to MOCK mode for demo purposes.');
-      _useMock = true;
-      _generateMockData();
+      print('Critical Error: Firebase initialization failed: $e');
+      // In production, we might want to show a fatal error screen here
+      // instead of silently failing or showing mock data.
     }
   }
 
@@ -62,31 +68,49 @@ class DatabaseHelper {
       print('Error loading cached mock data: $e');
     }
     
-    // Generate new mock data
+    // Generate new mock data - kept for legacy mock compatibility
     final random = Random();
-    final now = DateTime.now();
-    for (int i = 0; i < 20; i++) {
-        final date = now.subtract(Duration(days: random.nextInt(30)));
-        _mockData.add(FeedbackModel(
-            id: 'mock_$i',
-            rating: random.nextInt(5) + 1,
-            comments: 'This is a mock feedback comment #$i used for demonstration purposes.',
-            createdAt: date,
-            name: random.nextBool() ? 'User $i' : null,
-            email: random.nextBool() ? 'user$i@example.com' : null,
-        ));
-    }
-    
-    // Cache for next time
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final encoded = jsonEncode(_mockData.map((e) => e.toMap()).toList());
-      await prefs.setString('mock_feedback_data', encoded);
-      print('Mock: Generated and cached ${_mockData.length} feedback entries');
-    } catch (e) {
-      print('Error caching mock data: $e');
-    }
   }
+
+  // --- User Profile Methods (Firebase RTDB) ---
+
+  /// Creates or Overwrites user profile data in Realtime Database
+  Future<void> createUserProfile(UserModel user) async {
+      // Ensure DB initialized
+      if (_databaseRef == null) await initDatabase();
+      if (user.id == null) throw Exception('Cannot save user without ID');
+      
+      try {
+          // Store under users/{uid}
+          await _databaseRef!.root.child('users/${user.id}').set(user.toMap());
+      } catch (e) {
+          print('Error creating user profile: $e');
+          rethrow;
+      }
+  }
+  
+  /// Fetches user profile data from Realtime Database
+  Future<UserModel?> getUserProfile(String uid) async {
+       if (_databaseRef == null) await initDatabase();
+       
+       try {
+           final snapshot = await _databaseRef!.root.child('users/$uid').get();
+           if (snapshot.exists && snapshot.value != null) {
+               final data = Map<String, dynamic>.from(snapshot.value as Map);
+               data['id'] = uid; // Ensure ID is present
+               return UserModel.fromMap(data);
+           }
+       } catch (e) {
+           print('Error fetching user profile: $e');
+       }
+       return null;
+  }
+
+  /// Updates specific fields in user profile
+  Future<void> updateUserProfile(UserModel user) async {
+      await createUserProfile(user); // Reuse create (it overwrites/updates)
+  }
+
 
   /// Inserts a new feedback entry into Firebase Realtime Database
   /// Returns the key (ID) of the inserted entry
@@ -120,6 +144,7 @@ class DatabaseHelper {
     DateTime? startDate,
     DateTime? endDate,
     int limit = 100,
+    String? userId, // Optional filter by owner
   }) async {
     List<FeedbackModel> feedbackList = [];
 
@@ -133,11 +158,12 @@ class DatabaseHelper {
     } else {
         if (_databaseRef == null) await initDatabase();
         // Recurse if init switched to mock, otherwise continue with firebase
-        if (_useMock) return getAllFeedback(minRating: minRating, maxRating: maxRating, startDate: startDate, endDate: endDate);
+        if (_useMock) return getAllFeedback(minRating: minRating, maxRating: maxRating, startDate: startDate, endDate: endDate, limit: limit, userId: userId);
 
         try {
             // Use limitToLast to fetch only the most recent entries
             // Order by created_at timestamp to get newest first
+            // Note: Firebase query limitations mean we often filter client-side for complex multi-field queries
             final query = _databaseRef!.orderByChild('created_at').limitToLast(limit);
             final snapshot = await query.get();
             if (snapshot.exists && snapshot.value != null) {
@@ -174,7 +200,7 @@ class DatabaseHelper {
              print('Error fetching from Firebase: $e. Switching to mock.');
              _useMock = true;
              _generateMockData();
-             return getAllFeedback(minRating: minRating, maxRating: maxRating, startDate: startDate, endDate: endDate);
+             return getAllFeedback(minRating: minRating, maxRating: maxRating, startDate: startDate, endDate: endDate, limit: limit, userId: userId);
         }
     }
 
@@ -182,6 +208,9 @@ class DatabaseHelper {
     final filteredList = feedbackList.where((feedback) {
       bool matches = true;
       
+      // User ID filter (Owner check)
+      if (userId != null && feedback.ownerId != userId) matches = false;
+
       // Rating filters
       if (minRating != null && feedback.rating < minRating) matches = false;
       if (maxRating != null && feedback.rating > maxRating) matches = false;
@@ -206,12 +235,14 @@ class DatabaseHelper {
     int? maxRating,
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     final feedbackList = await getAllFeedback(
       minRating: minRating,
       maxRating: maxRating,
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
     return feedbackList.length;
   }
@@ -221,10 +252,12 @@ class DatabaseHelper {
   Future<Map<int, int>> getRatingDistribution({
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     final feedbackList = await getAllFeedback(
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
     
     final Map<int, int> distribution = {};
@@ -246,10 +279,12 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getTrendsData({
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     final feedbackList = await getAllFeedback(
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
     
     // Group by date
@@ -285,10 +320,12 @@ class DatabaseHelper {
   Future<double> getAverageRating({
     DateTime? startDate,
     DateTime? endDate,
+    String? userId,
   }) async {
     final feedbackList = await getAllFeedback(
       startDate: startDate,
       endDate: endDate,
+      userId: userId,
     );
     
     if (feedbackList.isEmpty) {
@@ -537,8 +574,8 @@ class DatabaseHelper {
   }
 
   /// Gets the currently active survey for user display
-  Future<SurveyForm?> getActiveSurvey() async {
-    final surveys = await getAllSurveys();
+  Future<SurveyForm?> getActiveSurvey({String? creatorId}) async {
+    final surveys = await getAllSurveys(creatorId: creatorId);
     try {
       return surveys.firstWhere((s) => s.isActive);
     } catch (e) {
@@ -547,7 +584,7 @@ class DatabaseHelper {
   }
 
   /// Submits a user's answers to the survey
-  Future<void> submitSurveyResponse(Map<String, dynamic> answers) async {
+  Future<void> submitSurveyResponse(Map<String, dynamic> answers, {String? ownerId}) async {
        if (_useMock) {
           // In mock mode, save responses to SharedPreferences
           try {
@@ -556,6 +593,7 @@ class DatabaseHelper {
               final responseJson = jsonEncode({
                   'answers': answers,
                   'submittedAt': DateTime.now().toIso8601String(),
+                  'ownerId': ownerId,
               });
               existingResponses.add(responseJson);
               await prefs.setStringList('survey_responses', existingResponses);
@@ -572,16 +610,24 @@ class DatabaseHelper {
       await responseRef.set({
           'answers': answers,
           'submittedAt': DateTime.now().toIso8601String(),
+          'ownerId': ownerId,
       });
   }
 
-  /// Retrieves all survey responses
-  Future<List<Map<String, dynamic>>> getAllSurveyResponses() async {
+  /// Retrieves all survey responses, optionally filtered by ownerId
+  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId}) async {
     if (_useMock) {
       try {
         final prefs = await SharedPreferences.getInstance();
         final responses = prefs.getStringList('survey_responses') ?? [];
-        return responses.map((r) => Map<String, dynamic>.from(jsonDecode(r))).toList();
+        var allResponses = responses.map((r) => Map<String, dynamic>.from(jsonDecode(r))).toList();
+        
+        // Filter by ownerId if provided
+        if (ownerId != null) {
+          allResponses = allResponses.where((r) => r['ownerId'] == ownerId).toList();
+        }
+        
+        return allResponses;
       } catch (e) {
         print('Error loading survey responses: $e');
         return [];
@@ -589,24 +635,80 @@ class DatabaseHelper {
     }
 
     if (_databaseRef == null) await initDatabase();
-    if (_useMock) return getAllSurveyResponses();
+    if (_useMock) return getAllSurveyResponses(ownerId: ownerId);
 
     try {
+      print('Fetching survey responses from Firebase...');
       final snapshot = await _databaseRef!.root.child('survey_responses').get();
+      print('Snapshot exists: ${snapshot.exists}');
+      
       if (snapshot.exists && snapshot.value != null) {
         final dynamic value = snapshot.value;
         List<Map<String, dynamic>> responses = [];
         if (value is Map) {
+          print('Found ${value.length} survey responses in Firebase');
           value.forEach((key, val) {
              final map = Map<String, dynamic>.from(val as Map);
              map['id'] = key;
+             
+             // Normalize data format: if answers are at root level, wrap them in 'answers'
+             if (!map.containsKey('answers')) {
+               // Extract answer fields (everything except metadata fields)
+               final answers = <String, dynamic>{};
+               final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+               
+               map.forEach((k, v) {
+                 if (!metadataFields.contains(k)) {
+                   answers[k] = v;
+                 }
+               });
+               
+               // If we found answer fields, wrap them
+               if (answers.isNotEmpty) {
+                 // Remove answer fields from root
+                 answers.keys.forEach((k) => map.remove(k));
+                 // Add wrapped answers
+                 map['answers'] = answers;
+                 print('Normalized response $key: moved ${answers.length} answer fields to answers object');
+               }
+             }
+             
              responses.add(map);
           });
         }
+        
+        print('Total responses before filtering: ${responses.length}');
+        
+        // Filter by ownerId if provided
+        if (ownerId != null) {
+          // Show responses that match ownerId OR responses without ownerId (orphaned responses)
+          // This handles cases where QR code didn't include uid parameter
+          final filtered = responses.where((r) {
+            final responseOwnerId = r['ownerId'];
+            // Match if ownerId matches OR if response has no ownerId (null/empty)
+            return responseOwnerId == ownerId || 
+                   responseOwnerId == null || 
+                   responseOwnerId.toString().isEmpty;
+          }).toList();
+          
+          print('Filtered responses by ownerId ($ownerId): ${filtered.length}');
+          print('  - Responses with matching ownerId: ${responses.where((r) => r['ownerId'] == ownerId).length}');
+          print('  - Responses without ownerId (orphaned): ${responses.where((r) => r['ownerId'] == null || r['ownerId'].toString().isEmpty).length}');
+          
+          responses = filtered;
+        } else {
+          // If no ownerId filter, show all responses (for debugging/admin view)
+          print('No ownerId filter - showing all ${responses.length} responses');
+        }
+        
+        print('Returning ${responses.length} survey responses');
         return responses;
+      } else {
+        print('No survey responses found in Firebase');
       }
     } catch (e) {
       print('Error fetching survey responses: $e');
+      print('Stack trace: ${StackTrace.current}');
     }
     return [];
   }

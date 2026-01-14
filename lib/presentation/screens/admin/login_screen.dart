@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../../data/local/sqlite_database_helper.dart';
-
 /// Production-ready login screen with enhanced UX and security features
 /// Includes email/password authentication, validation, error handling, and password visibility toggle
 class LoginScreen extends StatefulWidget {
@@ -99,49 +97,30 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final user = await SqliteDatabaseHelper.instance.getUser(
+      await context.read<AuthProvider>().loginWithEmail(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
-      if (user != null) {
-        // Reset failed attempts on success
-        _failedAttempts = 0;
-        _lockoutEndTime = null;
+      if (mounted) {
+        _showSuccessSnackbar('Welcome back!');
+        
+        // Small delay to show success message
+        await Future.delayed(const Duration(milliseconds: 500));
         
         if (mounted) {
-          // Set user in AuthProvider
-          context.read<AuthProvider>().login(user);
-          
-          _showSuccessSnackbar('Welcome back, ${user.name}!');
-          
-          // Small delay to show success message
-          await Future.delayed(const Duration(milliseconds: 500));
-          
-          if (mounted) {
-            context.go('/dashboard');
-          }
-        }
-      } else {
-        // Increment failed attempts
-        _failedAttempts++;
-        
-        // Lock account after 5 failed attempts
-        if (_failedAttempts >= 5) {
-          _lockoutEndTime = DateTime.now().add(const Duration(minutes: 5));
-          _showErrorSnackbar(
-            'Account locked due to multiple failed attempts. Try again in 5 minutes.'
-          );
-        } else {
-          final attemptsLeft = 5 - _failedAttempts;
-          _showErrorSnackbar(
-            'Invalid email or password. $attemptsLeft attempts remaining.'
-          );
+          context.go('/dashboard');
         }
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar('Login failed: $e');
+        // Increment failed attempts for local UX feedback (though Firebase handles security)
+        _failedAttempts++;
+         if (_failedAttempts >= 5) {
+          _lockoutEndTime = DateTime.now().add(const Duration(minutes: 5));
+        }
+        
+        _showErrorSnackbar(e.toString());
       }
     } finally {
       if (mounted) {

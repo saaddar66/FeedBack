@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../services/ai_service.dart';
 import '../../providers/feedback_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../../utils/pdf_exporter.dart';
+import '../../../utils/csv_exporter.dart';
 
 /// Production-ready screen displaying all survey responses with proper states
 /// Shows expandable cards with question answers and submission timestamps
@@ -21,6 +23,7 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   Map<String, String> _questionTitleCache = {}; // Cache question ID to title mapping
+  String? _selectedSurveyId; // Selected survey ID for filtering
 
   @override
   void initState() {
@@ -38,6 +41,12 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
     });
 
     try {
+      // Set current user context before loading data
+      final userId = context.read<AuthProvider>().user?.id;
+      if (userId != null) {
+        context.read<FeedbackProvider>().setCurrentUser(userId);
+      }
+      
       await context.read<FeedbackProvider>().loadSurveyResponses();
       
       // Build question title cache from surveys
@@ -69,6 +78,53 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
         _questionTitleCache[question.id] = question.title;
       }
     }
+  }
+
+  /// Determines which survey a response belongs to by matching question IDs
+  String? _getSurveyIdForResponse(Map<String, dynamic> response) {
+    final surveys = context.read<FeedbackProvider>().surveys;
+    
+    // Get answer keys from response
+    Map<String, dynamic> answers;
+    if (response.containsKey('answers') && response['answers'] is Map) {
+      answers = Map<String, dynamic>.from(response['answers'] as Map);
+    } else {
+      // Extract answer fields from root (backwards compatibility)
+      answers = <String, dynamic>{};
+      final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+      response.forEach((key, value) {
+        if (!metadataFields.contains(key)) {
+          answers[key.toString()] = value;
+        }
+      });
+    }
+    
+    final answerQuestionIds = answers.keys.toSet();
+    
+    // Find the survey that contains all or most of the question IDs from the response
+    for (final survey in surveys) {
+      final surveyQuestionIds = survey.questions.map((q) => q.id).toSet();
+      
+      // Check if all answer question IDs are in this survey
+      if (answerQuestionIds.isNotEmpty && 
+          answerQuestionIds.every((id) => surveyQuestionIds.contains(id))) {
+        return survey.id;
+      }
+    }
+    
+    return null; // Could not match to any survey
+  }
+
+  /// Filters responses by selected survey
+  List<Map<String, dynamic>> _getFilteredResponses(List<Map<String, dynamic>> responses) {
+    if (_selectedSurveyId == null) {
+      return responses;
+    }
+    
+    return responses.where((response) {
+      final surveyId = _getSurveyIdForResponse(response);
+      return surveyId == _selectedSurveyId;
+    }).toList();
   }
 
   /// Deletes single response with confirmation dialog
@@ -111,7 +167,8 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
   /// Exports all responses to CSV or JSON format
   Future<void> _exportResponses() async {
     try {
-      final responses = context.read<FeedbackProvider>().surveyResponses;
+      final allResponses = context.read<FeedbackProvider>().surveyResponses;
+      final responses = _getFilteredResponses(allResponses);
       
       if (responses.isEmpty) {
         _showErrorSnackbar('No responses to export');
@@ -137,25 +194,30 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
         ),
       );
 
-      if (format == 'pdf') {
-        try {
-          await PDFExporter().exportAllData();
+      try {
+        if (format == 'pdf') {
+          final userId = context.read<AuthProvider>().user?.id;
+          await PDFExporter().exportAllData(userId: userId);
           if (mounted) _showSuccessSnackbar('PDF Report generated successfully');
-        } catch (e) {
-          if (mounted) _showErrorSnackbar('Failed to generate PDF: $e');
+        } else if (format == 'csv') {
+          final surveys = context.read<FeedbackProvider>().surveys;
+          final userId = context.read<AuthProvider>().user?.id;
+          await CSVExporter().exportSurveyResponses(responses, surveys, userId: userId);
+          if (mounted) _showSuccessSnackbar('CSV file exported successfully');
         }
-        return;
+      } catch (e) {
+        if (mounted) {
+          _showErrorSnackbar('Failed to export: $e');
+        }
       }
-
-      // TODO: Implement actual export logic based on format
-      _showSuccessSnackbar('Export feature coming soon!');
     } catch (e) {
       _showErrorSnackbar('Error exporting responses: $e');
     }
   }
 
   Future<void> _analyzeResponses() async {
-    final responses = context.read<FeedbackProvider>().surveyResponses;
+    final allResponses = context.read<FeedbackProvider>().surveyResponses;
+    final responses = _getFilteredResponses(allResponses);
     final surveys = context.read<FeedbackProvider>().surveys;
     
     if (responses.isEmpty) {
@@ -250,6 +312,16 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
           onPressed: () => context.go('/dashboard'),
         ),
         actions: [
+          // Filter button
+          if (!_isLoading)
+            IconButton(
+              icon: Icon(
+                Icons.filter_list,
+                color: _selectedSurveyId != null ? Colors.blue : null,
+              ),
+              onPressed: _showFilterDialog,
+              tooltip: 'Filter by Survey',
+            ),
           // AI Analyze button
             if (!_isLoading && responses.isNotEmpty)
               IconButton(
@@ -272,7 +344,44 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
           ),
         ],
       ),
-      body: _buildBody(responses),
+      body: Column(
+        children: [
+          // Filter chip bar
+          if (_selectedSurveyId != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.blue.shade50,
+              child: Row(
+                children: [
+                  Icon(Icons.filter_alt, size: 16, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Filtered by: ${_getSelectedSurveyTitle()}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _selectedSurveyId = null;
+                      });
+                    },
+                    child: Text(
+                      'Clear',
+                      style: TextStyle(color: Colors.blue.shade700, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(child: _buildBody(_getFilteredResponses(responses))),
+        ],
+      ),
     );
   }
 
@@ -367,7 +476,20 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
 
   /// Builds expandable card for each survey response
   Widget _buildResponseCard(Map<String, dynamic> response, int index) {
-    final answers = Map<String, dynamic>.from(response['answers'] as Map? ?? {});
+    // Handle both formats: answers wrapped in 'answers' or at root level
+    Map<String, dynamic> answers;
+    if (response.containsKey('answers') && response['answers'] is Map) {
+      answers = Map<String, dynamic>.from(response['answers'] as Map);
+    } else {
+      // If no 'answers' key, extract answer fields from root (backwards compatibility)
+      answers = <String, dynamic>{};
+      final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+      response.forEach((key, value) {
+        if (!metadataFields.contains(key)) {
+          answers[key] = value;
+        }
+      });
+    }
     final responseId = response['id'] as String? ?? '';
     final submittedAtString = response['submittedAt'] as String?;
     final userName = response['userName'] as String?;
@@ -486,5 +608,71 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
     
     final stringValue = value.toString();
     return stringValue.isEmpty ? 'No answer' : stringValue;
+  }
+
+  /// Shows filter dialog to select a survey
+  void _showFilterDialog() {
+    final surveys = context.read<FeedbackProvider>().surveys;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Filter by Survey'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: const Text('All Surveys'),
+                leading: Radio<String?>(
+                  value: null,
+                  groupValue: _selectedSurveyId,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedSurveyId = value;
+                    });
+                    Navigator.of(ctx).pop();
+                  },
+                ),
+              ),
+              const Divider(),
+              ...surveys.map((survey) => ListTile(
+                title: Text(survey.title),
+                subtitle: Text('${survey.questions.length} questions'),
+                leading: Radio<String?>(
+                  value: survey.id,
+                  groupValue: _selectedSurveyId,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedSurveyId = value;
+                    });
+                    Navigator.of(ctx).pop();
+                  },
+                ),
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Gets the title of the selected survey
+  String _getSelectedSurveyTitle() {
+    if (_selectedSurveyId == null) return '';
+    
+    final surveys = context.read<FeedbackProvider>().surveys;
+    final survey = surveys.firstWhere(
+      (s) => s.id == _selectedSurveyId,
+      orElse: () => surveys.first,
+    );
+    return survey.title;
   }
 }

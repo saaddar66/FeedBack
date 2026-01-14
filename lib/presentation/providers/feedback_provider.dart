@@ -104,13 +104,16 @@ class FeedbackProvider with ChangeNotifier {
 
   List<SurveyForm> get surveys => List.unmodifiable(_surveys);
 
+  /// Sets the current user context and reloads data
+  void setCurrentUser(String? userId) {
+    _currentUserId = userId;
+    loadSurveys();
+    loadFeedback();
+  }
+
   /// Loads all surveys
   Future<void> loadSurveys({String? userId}) async {
-    // If userId is provided, update our context. If not provided, keep existing context (or null) if we want to refresh current view.
-    // However, the previous logic was: if called without args, it was loading ALL.
-    // To support "reload current view", we should trust _currentUserId if userId is null? 
-    // Or we explicitly update _currentUserId only when non-null?
-    // Let's say: if userId passed, update _currentUserId. Then load using _currentUserId.
+    // If userId provided, update context
     if (userId != null) {
       _currentUserId = userId;
     }
@@ -119,8 +122,8 @@ class FeedbackProvider with ChangeNotifier {
   }
 
   /// Loads the active survey for the user-facing screen
-  Future<void> loadActiveSurvey() async {
-    _activeSurvey = await _repository.getActiveSurvey();
+  Future<void> loadActiveSurvey({String? userId}) async {
+    _activeSurvey = await _repository.getActiveSurvey(userId: userId);
     notifyListeners();
   }
 
@@ -217,16 +220,16 @@ class FeedbackProvider with ChangeNotifier {
 
   /// Submits survey answers
   Future<void> submitSurveyAnswers(Map<String, dynamic> answers) async {
-    await _repository.submitSurveyResponse(answers);
+    await _repository.submitSurveyResponse(answers, ownerId: _currentUserId);
   }
 
   // Survey Responses state
   List<Map<String, dynamic>> _surveyResponses = [];
   List<Map<String, dynamic>> get surveyResponses => List.unmodifiable(_surveyResponses);
 
-  /// Loads all survey responses
+  /// Loads all survey responses for the current user
   Future<void> loadSurveyResponses() async {
-    _surveyResponses = await _repository.getSurveyResponses();
+    _surveyResponses = await _repository.getSurveyResponses(ownerId: _currentUserId);
     notifyListeners();
   }
 
@@ -258,6 +261,7 @@ class FeedbackProvider with ChangeNotifier {
         maxRating: _selectedMaxRating,
         startDate: _startDate,
         endDate: _endDate,
+        userId: _currentUserId, // Filter by current user
       );
 
       // 2. Convert FeedbackModel list to JSON for serialization using existing toMap()
@@ -299,6 +303,7 @@ class FeedbackProvider with ChangeNotifier {
         email: email,
         rating: rating,
         comments: comments,
+        ownerId: _currentUserId, // Owner ID for manual admin submissions
       );
       // Reload feedback to include the new entry
       await loadFeedback();

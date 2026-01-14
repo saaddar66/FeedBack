@@ -29,6 +29,9 @@ import 'package:feedy/presentation/screens/public/thank_you_screen.dart';
 // Import firebase_options.dart after running: flutterfire configure
 import 'firebase_options.dart';
 
+import 'dart:ui'; // For PlatformDispatcher
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
 /// Main entry point of the application
 /// Initializes Firebase and sets up the app with Provider for state management
 void main() async {
@@ -38,24 +41,34 @@ void main() async {
   // Load environment variables for secure key management
   await dotenv.load(fileName: ".env");
   
-  
   // Initialize database factory based on platform (Web, Desktop, Mobile)
   configureDatabase();
   
-  // Initialize Firebase (handles platform specific setup)
-  // After running 'flutterfire configure', uncomment the line below and comment the defaultOptions line
+  // Initialize Firebase (and Crashlytics)
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    
+    // Enable Crashlytics collection
+    // Pass all uncaught "fatal" errors from the framework to Crashlytics
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+    // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+
   } catch (e) {
     print('Firebase initialization failed: $e');
-    // Continue anyway, DatabaseHelper will handle mock mode if needed
+    // Continue anyway, DatabaseHelper generally handles offline/mock
   }
   
-  // Initialize the database singleton instance for offline storage
+  // Initialize the database singleton
   final databaseHelper = DatabaseHelper.instance;
-  await databaseHelper.initDatabase();
+  // Note: We removed explicit "Mock Mode" fallback for production. 
+  // It will now try to use Firebase Offline persistence.
   
   // Create repository instance that will handle all data operations and abstraction
   final feedbackRepository = FeedbackRepository(databaseHelper);

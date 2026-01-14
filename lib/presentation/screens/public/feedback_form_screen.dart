@@ -52,12 +52,18 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
     setState(() => _isSubmitting = true);
 
     final provider = context.read<PublicSubmissionProvider>();
+    
+    // Get ownerId from query parameters
+    final state = GoRouterState.of(context);
+    final ownerId = state.uri.queryParameters['uid'];
+
     // Submit feedback through provider
     final success = await provider.submitPublicFeedback(
       name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
       email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
       rating: _selectedRating,
       comments: _commentsController.text.trim(),
+      ownerId: ownerId,
     );
 
     setState(() => _isSubmitting = false);

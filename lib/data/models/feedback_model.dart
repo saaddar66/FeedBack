@@ -8,6 +8,8 @@ class FeedbackModel {
   final String comments;      // Feedback comments (required)
   final DateTime createdAt;    // Timestamp when feedback was created
 
+  final String? ownerId;       // ID of the user (admin) who owns this feedback
+
   FeedbackModel({
     this.id,
     this.name,
@@ -15,6 +17,7 @@ class FeedbackModel {
     required this.rating,
     required this.comments,
     required this.createdAt,
+    this.ownerId,
   });
 
   /// Converts the model to a Map for database storage
@@ -27,6 +30,7 @@ class FeedbackModel {
       'rating': rating,
       'comments': comments,
       'created_at': createdAt.toIso8601String(),
+      'owner_id': ownerId,
     };
   }
 
@@ -46,6 +50,7 @@ class FeedbackModel {
       rating: map['rating'] as int,
       comments: map['comments'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
+      ownerId: map['owner_id'] as String?,
     );
   }
 
@@ -58,6 +63,7 @@ class FeedbackModel {
     int? rating,
     String? comments,
     DateTime? createdAt,
+    String? ownerId,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -66,6 +72,7 @@ class FeedbackModel {
       rating: rating ?? this.rating,
       comments: comments ?? this.comments,
       createdAt: createdAt ?? this.createdAt,
+      ownerId: ownerId ?? this.ownerId,
     );
   }
 }

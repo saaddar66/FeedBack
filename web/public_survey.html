@@ -546,8 +546,22 @@
           }
         });
 
-        // Add timestamp
+        // Add timestamp and ownerId from URL query parameter
         surveyData.submittedAt = new Date().toISOString();
+        
+        // Get ownerId from URL query parameter (uid)
+        const urlParams = new URLSearchParams(window.location.search);
+        const ownerId = urlParams.get('uid');
+        
+        // Always set ownerId (even if null/empty) so we can track it
+        if (ownerId) {
+          surveyData.ownerId = ownerId;
+          console.log("Survey response will be linked to ownerId:", ownerId);
+        } else {
+          console.warn("WARNING: No 'uid' parameter found in URL. Survey response will not be linked to any user.");
+          // Still save the response, but without ownerId
+          // The app will handle this case
+        }
 
         // Save to Firebase
         const surveyRef = ref(db, 'survey_responses');
@@ -612,6 +626,13 @@
         comments: document.getElementById("feedbackComments").value.trim(),
         created_at: new Date().toISOString()
       };
+
+      // Get ownerId from URL query parameter (uid)
+      const urlParams = new URLSearchParams(window.location.search);
+      const ownerId = urlParams.get('uid');
+      if (ownerId) {
+        feedbackData.owner_id = ownerId;
+      }
 
       try {
         // Save to Firebase

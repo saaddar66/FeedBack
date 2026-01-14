@@ -5,8 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../services/ai_service.dart';
 import '../../providers/feedback_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../../data/models/feedback_model.dart';
 import '../../../utils/pdf_exporter.dart';
+import '../../../utils/csv_exporter.dart';
 
 /// Production-ready feedback list screen with filtering sorting and actions
 /// Displays all customer feedback with ratings, comments, and timestamps
@@ -55,6 +57,12 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
     });
 
     try {
+      // Set current user context before loading data
+      final userId = context.read<AuthProvider>().user?.id;
+      if (userId != null) {
+        context.read<FeedbackProvider>().setCurrentUser(userId);
+      }
+      
       await context.read<FeedbackProvider>().loadFeedback();
       
       if (mounted) {
@@ -313,18 +321,21 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
 
     if (format == null) return;
     
-    if (format == 'pdf') {
-      try {
-        await PDFExporter().exportAllData();
+    try {
+      if (format == 'pdf') {
+        final userId = context.read<AuthProvider>().user?.id;
+        await PDFExporter().exportAllData(userId: userId);
         if (mounted) _showSuccessSnackbar('PDF Report generated successfully');
-      } catch (e) {
-        if (mounted) _showErrorSnackbar('Failed to generate PDF: $e');
+      } else if (format == 'csv') {
+        final userId = context.read<AuthProvider>().user?.id;
+        await CSVExporter().exportFeedback(feedbackList, userId: userId);
+        if (mounted) _showSuccessSnackbar('CSV file exported successfully');
       }
-      return;
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackbar('Failed to export: $e');
+      }
     }
-
-    // TODO: Implement actual export logic for other formats
-    _showSuccessSnackbar('Export to $format coming soon!');
   }
 
   Future<void> _analyzeFeedback() async {

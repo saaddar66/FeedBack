@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/local/sqlite_database_helper.dart';
-import '../../data/models/user_model.dart';
+import 'package:provider/provider.dart';
+import '../../presentation/providers/auth_provider.dart';
 
 /// Signup screen for creating a new admin account
 /// Contains fields for name, email, phone, business name, password, and confirm password
@@ -192,30 +192,14 @@ class SignupScreen extends StatelessWidget {
                                   setState(() => isLoading = true);
                                   
                                   try {
-                                    // Check if email already exists
-                                    final exists = await SqliteDatabaseHelper.instance.checkEmailExists(emailController.text);
-                                    
-                                    if (exists) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Email already exists')),
-                                        );
-                                        setState(() => isLoading = false);
-                                      }
-                                      return;
-                                    }
-
-                                    // Create user model
-                                    final newUser = UserModel(
+                                    // Create user via AuthProvider (Firebase + RTDB)
+                                    await context.read<AuthProvider>().signupWithEmail(
                                       name: nameController.text,
                                       email: emailController.text,
                                       phone: phoneController.text,
                                       businessName: businessNameController.text,
                                       password: passwordController.text,
                                     );
-
-                                    // Insert into database
-                                    await SqliteDatabaseHelper.instance.insertUser(newUser);
                                     
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -227,7 +211,7 @@ class SignupScreen extends StatelessWidget {
                                   } catch (e) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Error creating account: $e')),
+                                        SnackBar(content: Text('Error: $e')),
                                       );
                                     }
                                   } finally {

@@ -55,6 +55,12 @@ dependencies:
   flutter_markdown: ^0.7.7+1
   http: ^1.6.0
   flutter_dotenv: ^5.1.0
+  firebase_crashlytics:
+  firebase_analytics:
+  connectivity_plus: ^6.1.0
+  firebase_auth:
+  path_provider: ^2.1.1
+  share_plus: ^7.2.1
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +72,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

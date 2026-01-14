@@ -2,23 +2,71 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 /// Welcome screen that serves as the entry point of the application
 /// Displays app title, QR code for feedback, and navigation to feedback form and admin login
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  String? _lastActiveUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastActiveUser();
+  }
+
+  Future<void> _loadLastActiveUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _lastActiveUserId = prefs.getString('last_active_user_id');
+      });
+    }
+  }
 
   /// Generates the QR code URL for the feedback form
   /// Uses the current web URL or constructs a relative path
-  String _getQrCodeUrl() {
+  /// Prioritizes current logged-in user, then last active user
+  String _getQrCodeUrl(BuildContext context) {
+    String baseUrl;
     if (kIsWeb) {
       // For web, use the current origin + /#/survey route
       final uri = Uri.base;
-      return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
     } else {
       // For mobile/desktop, point to the hosted web app's survey route
-      return 'https://feedy-cebf6.web.app/#/survey'; 
+      baseUrl = 'https://feedy-cebf6.web.app/#/survey'; 
     }
+
+    // Try to get current logged-in user ID first (most reliable)
+    String? ownerId;
+    try {
+      final authProvider = context.read<AuthProvider>();
+      ownerId = authProvider.user?.id;
+    } catch (e) {
+      // If provider not available, fall back to last active user
+    }
+
+    // Fall back to last active user if no current user
+    ownerId ??= _lastActiveUserId;
+
+    // Append ownerId if available
+    if (ownerId != null && ownerId.isNotEmpty) {
+      return '$baseUrl?uid=$ownerId';
+    }
+    
+    // If no ownerId, still return URL but log warning
+    print('WARNING: QR code generated without ownerId. Survey responses may not appear in app.');
+    return baseUrl;
   }
 
   @override
@@ -67,7 +115,7 @@ class WelcomeScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                           QrImageView(
-                            data: _getQrCodeUrl(),
+                            data: _getQrCodeUrl(context),
                             version: QrVersions.auto,
                             size: 200.0,
                             backgroundColor: Colors.white,
@@ -80,6 +128,16 @@ class WelcomeScreen extends StatelessWidget {
                               color: Colors.grey[600],
                             ),
                           ),
+                          if (_lastActiveUserId != null)
+                             Padding(
+                               padding: const EdgeInsets.only(top: 4.0),
+                                 child: Text(
+                                   _lastActiveUserId!.length > 4 
+                                      ? 'Linked to Admin ID: ${_lastActiveUserId!.substring(0, 4)}...'
+                                      : 'Linked to Admin ID: $_lastActiveUserId',
+                                   style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                 ),
+                             ),
                         ],
                       ),
                     ),
@@ -89,7 +147,13 @@ class WelcomeScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => context.go('/survey'),
+                      onPressed: () {
+                          String route = '/survey';
+                          if (_lastActiveUserId != null) {
+                            route += '?uid=$_lastActiveUserId';
+                          }
+                          context.go(route);
+                      },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: Colors.blue,

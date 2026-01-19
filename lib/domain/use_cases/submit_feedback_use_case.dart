@@ -17,6 +17,7 @@ class SubmitFeedbackUseCase {
     required int rating,
     required String comments,
     String? ownerId,
+    String? surveyId,
   }) async {
     return await repository.submitFeedback(
       name: name,
@@ -24,6 +25,7 @@ class SubmitFeedbackUseCase {
       rating: rating,
       comments: comments,
       ownerId: ownerId,
+      surveyId: surveyId,
     );
   }
 }

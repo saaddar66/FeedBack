@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'dart:developer' as developer;
 import '../../../services/ai_service.dart';
 import '../../providers/feedback_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -37,7 +38,25 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFeedback();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = context.read<AuthProvider>();
+      
+      if (authProvider.isLoading) {
+         // Should wait or listen, but simpler to just return or show loading in build
+         return; 
+      }
+
+      final userId = authProvider.user?.id;
+      if (userId != null) {
+        developer.log('FeedbackListScreen: Current logged-in user ID: $userId', name: 'FeedbackListScreen');
+        context.read<FeedbackProvider>().setCurrentUser(userId);
+        context.read<FeedbackProvider>().clearFilters();
+        _loadFeedback();
+      } else {
+        developer.log('FeedbackListScreen: WARNING - No user ID found! Redirecting to login.', name: 'FeedbackListScreen', level: 900);
+        context.go('/login');
+      }
+    });
   }
 
   @override
@@ -57,12 +76,6 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
     });
 
     try {
-      // Set current user context before loading data
-      final userId = context.read<AuthProvider>().user?.id;
-      if (userId != null) {
-        context.read<FeedbackProvider>().setCurrentUser(userId);
-      }
-      
       await context.read<FeedbackProvider>().loadFeedback();
       
       if (mounted) {
@@ -321,7 +334,7 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
 
     if (format == null) return;
     
-    try {
+      try {
       if (format == 'pdf') {
         final userId = context.read<AuthProvider>().user?.id;
         await PDFExporter().exportAllData(userId: userId);
@@ -331,7 +344,7 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
         await CSVExporter().exportFeedback(feedbackList, userId: userId);
         if (mounted) _showSuccessSnackbar('CSV file exported successfully');
       }
-    } catch (e) {
+      } catch (e) {
       if (mounted) {
         _showErrorSnackbar('Failed to export: $e');
       }
@@ -395,16 +408,23 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
   void _showFilterSortOptions() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               const Text(
                 'Filter & Sort Options',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -495,6 +515,7 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -550,6 +571,7 @@ class _FeedbackListScreenState extends State<FeedbackListScreen> {
     final filteredFeedback = _getFilteredAndSortedFeedback(allFeedback);
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

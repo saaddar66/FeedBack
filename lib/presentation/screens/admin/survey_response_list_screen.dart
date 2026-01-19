@@ -22,7 +22,7 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
-  Map<String, String> _questionTitleCache = {}; // Cache question ID to title mapping
+  final Map<String, String> _questionTitleCache = {}; // Cache question ID to title mapping
   String? _selectedSurveyId; // Selected survey ID for filtering
 
   @override
@@ -305,6 +305,7 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
     final responses = context.watch<FeedbackProvider>().surveyResponses;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('Survey Responses'),
         leading: IconButton(
@@ -614,52 +615,76 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
   void _showFilterDialog() {
     final surveys = context.read<FeedbackProvider>().surveys;
     
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Filter by Survey'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                title: const Text('All Surveys'),
-                leading: Radio<String?>(
-                  value: null,
-                  groupValue: _selectedSurveyId,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedSurveyId = value;
-                    });
-                    Navigator.of(ctx).pop();
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Filter Options',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 24),
+                
+                // Filter by survey section
+                const Text('Filter by Survey', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                
+                // All Surveys option
+                ChoiceChip(
+                  label: const Text('All Surveys'),
+                  selected: _selectedSurveyId == null,
+                  onSelected: (selected) {
+                    setModalState(() => _selectedSurveyId = null);
+                    setState(() => _selectedSurveyId = null);
                   },
                 ),
-              ),
-              const Divider(),
-              ...surveys.map((survey) => ListTile(
-                title: Text(survey.title),
-                subtitle: Text('${survey.questions.length} questions'),
-                leading: Radio<String?>(
-                  value: survey.id,
-                  groupValue: _selectedSurveyId,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedSurveyId = value;
-                    });
-                    Navigator.of(ctx).pop();
-                  },
+                const SizedBox(height: 8),
+                
+                // Individual survey options
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: surveys.map((survey) => ChoiceChip(
+                    label: Text(
+                      survey.title,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    selected: _selectedSurveyId == survey.id,
+                    onSelected: (selected) {
+                      setModalState(() => _selectedSurveyId = survey.id);
+                      setState(() => _selectedSurveyId = survey.id);
+                    },
+                  )).toList(),
                 ),
-              )),
-            ],
+                const SizedBox(height: 24),
+                
+                // Apply button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }

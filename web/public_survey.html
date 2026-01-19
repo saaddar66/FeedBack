@@ -618,21 +618,23 @@
         return;
       }
 
-      // Collect feedback data
+      // Collect feedback data with required ownerId (validated at page load)
       const feedbackData = {
         name: document.getElementById("feedbackName").value.trim() || null,
         email: document.getElementById("feedbackEmail").value.trim() || null,
         rating: document.getElementById("feedbackRating").value,
         comments: document.getElementById("feedbackComments").value.trim(),
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        owner_id: ownerId  // Required: set from URL parameter validated at page load
       };
 
-      // Get ownerId from URL query parameter (uid)
-      const urlParams = new URLSearchParams(window.location.search);
-      const ownerId = urlParams.get('uid');
-      if (ownerId) {
-        feedbackData.owner_id = ownerId;
+      // Include surveyId if feedback is submitted after a survey
+      if (activeSurveyId) {
+        feedbackData.survey_id = activeSurveyId;
+        console.log("Feedback will be linked to survey:", activeSurveyId);
       }
+      
+      console.log("Submitting feedback with owner_id:", ownerId);
 
       try {
         // Save to Firebase

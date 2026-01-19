@@ -1,5 +1,6 @@
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:developer' as developer;
 
 class SpeechHelper {
   static final SpeechHelper _instance = SpeechHelper._internal();
@@ -19,19 +20,19 @@ class SpeechHelper {
       if (!status.isGranted) {
         status = await Permission.microphone.request();
         if (!status.isGranted) {
-          print('Microphone permission denied');
+          developer.log('Microphone permission denied', name: 'SpeechHelper');
           return false;
         }
       }
 
       _isAvailable = await _speech.initialize(
-        onError: (e) => print('Speech Error: $e'),
-        onStatus: (s) => print('Speech Status: $s'),
+        onError: (e) => developer.log('Speech Error: $e', name: 'SpeechHelper', error: e),
+        onStatus: (s) => developer.log('Speech Status: $s', name: 'SpeechHelper'),
       );
       _isInit = true;
       return _isAvailable;
     } catch (e) {
-      print('Speech Initialization Error: $e');
+      developer.log('Speech Initialization Error: $e', name: 'SpeechHelper', error: e);
       return false;
     }
   }
@@ -75,7 +76,7 @@ class SpeechHelper {
           cancelOnError: true,
         );
       } catch (e) {
-        print('Error starting speech listen: $e');
+        developer.log('Error starting speech listen: $e', name: 'SpeechHelper', error: e);
         onListeningStateChanged(false);
       }
     }

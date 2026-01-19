@@ -26,6 +26,7 @@ class PublicSubmissionProvider with ChangeNotifier {
     required int rating,
     required String comments,
     String? ownerId,
+    String? surveyId,
   }) async {
     _isSubmitting = true;
     _errorMessage = null;
@@ -38,6 +39,7 @@ class PublicSubmissionProvider with ChangeNotifier {
         rating: rating,
         comments: comments,
         ownerId: ownerId,
+        surveyId: surveyId,
       );
       
       _isSubmitting = false;

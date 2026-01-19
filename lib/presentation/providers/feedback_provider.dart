@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'dart:convert';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/models/feedback_model.dart';
 import '../../data/models/survey_models.dart';
@@ -106,6 +105,7 @@ class FeedbackProvider with ChangeNotifier {
 
   /// Sets the current user context and reloads data
   void setCurrentUser(String? userId) {
+    print('FeedbackProvider: Setting current user to: $userId');
     _currentUserId = userId;
     loadSurveys();
     loadFeedback();
@@ -124,6 +124,7 @@ class FeedbackProvider with ChangeNotifier {
   /// Loads the active survey for the user-facing screen
   Future<void> loadActiveSurvey({String? userId}) async {
     _activeSurvey = await _repository.getActiveSurvey(userId: userId);
+    resetSurveyAnswers();
     notifyListeners();
   }
 
@@ -218,9 +219,32 @@ class FeedbackProvider with ChangeNotifier {
     await loadSurveys(); // Reloads using _currentUserId
   }
 
+  // Survey Answer State
+  Map<String, dynamic> _currentSurveyAnswers = {};
+  Map<String, dynamic> get currentSurveyAnswers => Map.unmodifiable(_currentSurveyAnswers);
+
+  void updateSurveyAnswer(String questionId, dynamic value) {
+    _currentSurveyAnswers[questionId] = value;
+    notifyListeners();
+  }
+
+  void resetSurveyAnswers() {
+    _currentSurveyAnswers = {};
+    notifyListeners();
+  }
+
   /// Submits survey answers
   Future<void> submitSurveyAnswers(Map<String, dynamic> answers) async {
     await _repository.submitSurveyResponse(answers, ownerId: _currentUserId);
+  }
+
+  /// Submits the currently accumulated survey answers
+  Future<void> submitCurrentAnswers() async {
+    if (_currentSurveyAnswers.isEmpty) {
+      throw Exception('Please answer at least one question');
+    }
+    await submitSurveyAnswers(Map.from(_currentSurveyAnswers));
+    resetSurveyAnswers();
   }
 
   // Survey Responses state
@@ -256,6 +280,14 @@ class FeedbackProvider with ChangeNotifier {
 
     try {
       // 1. Single Network Request: Load feedback list with current filters
+    if (_currentUserId == null) {
+      print('FeedbackProvider: Skipping loadFeedback because currentUserId is null');
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
+      print('FeedbackProvider: Loading feedback with userId: $_currentUserId');
       _feedbackList = await _repository.getFeedback(
         minRating: _selectedMinRating,
         maxRating: _selectedMaxRating,
@@ -263,6 +295,11 @@ class FeedbackProvider with ChangeNotifier {
         endDate: _endDate,
         userId: _currentUserId, // Filter by current user
       );
+      print('FeedbackProvider: Loaded ${_feedbackList.length} feedback entries');
+      
+      if (_feedbackList.isNotEmpty) {
+        print('DEBUG: First feedback item ownerId: "${_feedbackList.first.ownerId}" vs currentUserId: "$_currentUserId"');
+      }
 
       // 2. Convert FeedbackModel list to JSON for serialization using existing toMap()
       final feedbackJsonList = _feedbackList.map((f) => f.toMap()).toList();
@@ -296,6 +333,7 @@ class FeedbackProvider with ChangeNotifier {
     String? email,
     required int rating,
     required String comments,
+    String? surveyId,
   }) async {
     try {
       await _repository.submitFeedback(
@@ -304,6 +342,7 @@ class FeedbackProvider with ChangeNotifier {
         rating: rating,
         comments: comments,
         ownerId: _currentUserId, // Owner ID for manual admin submissions
+        surveyId: surveyId,
       );
       // Reload feedback to include the new entry
       await loadFeedback();

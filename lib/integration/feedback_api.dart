@@ -41,6 +41,8 @@ class FeedbackAPI {
   /// [comments] - Required. Feedback comments
   /// [name] - Optional. Name of the person submitting feedback
   /// [email] - Optional. Email of the person submitting feedback
+  /// [ownerId] - Optional. ID of the user (admin) who owns this feedback
+  /// [surveyId] - Optional. ID of the survey this feedback is associated with
   /// 
   /// Returns the Firebase key (ID) of the inserted feedback record, or throws an exception on error
   Future<String> submitFeedback({
@@ -48,6 +50,8 @@ class FeedbackAPI {
     required String comments,
     String? name,
     String? email,
+    String? ownerId,
+    String? surveyId,
   }) async {
     if (!_initialized) {
       throw StateError(
@@ -68,6 +72,8 @@ class FeedbackAPI {
       email: email,
       rating: rating,
       comments: comments,
+      ownerId: ownerId,
+      surveyId: surveyId,
     );
   }
 
@@ -104,6 +110,8 @@ class FeedbackAPI {
       'rating': f.rating,
       'comments': f.comments,
       'createdAt': f.createdAt.toIso8601String(),
+      'ownerId': f.ownerId,
+      'surveyId': f.surveyId,
     }).toList();
   }
 

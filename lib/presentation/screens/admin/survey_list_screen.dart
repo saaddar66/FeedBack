@@ -215,8 +215,8 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
       floatingActionButton: (!_isLoading && !_hasError)
           ? FloatingActionButton(
               onPressed: _createNewSurvey,
-              child: const Icon(Icons.add),
               tooltip: 'Create New Survey',
+              child: const Icon(Icons.add),
             )
           : null,
     );

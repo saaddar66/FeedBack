@@ -11,10 +11,13 @@ class AuthProvider with ChangeNotifier {
   UserModel? _currentUser;
   StreamSubscription<User?>? _authSubscription;
   
+  bool _isLoading = true;
+
   // Expose current user state
   UserModel? get user => _currentUser;
   bool get isLoggedIn => _currentUser != null; // Checks if our app model is loaded
   bool get isFirebaseLoggedIn => _auth.currentUser != null; // Checks low-level auth
+  bool get isLoading => _isLoading;
 
   AuthProvider() {
     initAuth();
@@ -26,10 +29,13 @@ class AuthProvider with ChangeNotifier {
     _authSubscription = _auth.authStateChanges().listen((User? firebaseUser) async {
       if (firebaseUser == null) {
         _currentUser = null;
+        _isLoading = false;
         notifyListeners();
       } else {
         // Fetch full profile from RTDB
         await _loadUserProfile(firebaseUser);
+        _isLoading = false;
+        notifyListeners();
       }
     });
   }
@@ -44,6 +50,7 @@ class AuthProvider with ChangeNotifier {
         // Persist last active user ID for public form attribution (QR code)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('last_active_user_id', firebaseUser.uid);
+        await prefs.setString('last_active_business_name', userProfile.businessName);
         
         notifyListeners();
       } else {
@@ -62,12 +69,49 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Logs in using Firebase Auth
+  /// Logs in using Firebase Auth with account lockout logic
   Future<void> loginWithEmail(String email, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 1. Check if currently locked out
+    final lockoutTimestamp = prefs.getInt('auth_lockout_until');
+    if (lockoutTimestamp != null) {
+      final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutTimestamp);
+      if (DateTime.now().isBefore(lockoutTime)) {
+        final remaining = lockoutTime.difference(DateTime.now());
+        final mins = remaining.inMinutes;
+        final secs = remaining.inSeconds % 60;
+        throw 'Account locked. Try again in ${mins > 0 ? '$mins m ' : ''}$secs s';
+      } else {
+        // Lockout expired, clear it
+        await prefs.remove('auth_lockout_until');
+        await prefs.setInt('auth_failed_attempts', 0);
+      }
+    }
+
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
+      
+      // 2. Login successful, reset counters
+      await prefs.remove('auth_failed_attempts');
+      await prefs.remove('auth_lockout_until');
+      
       // Listener in initAuth will handle setting _currentUser
     } on FirebaseAuthException catch (e) {
+      // 3. Login failed, handle lockout logic
+      if (e.code == 'invalid-credential' || e.code == 'user-not-found' || e.code == 'wrong-password') {
+        int attempts = (prefs.getInt('auth_failed_attempts') ?? 0) + 1;
+        await prefs.setInt('auth_failed_attempts', attempts);
+        
+        if (attempts >= 5) {
+          final lockoutTime = DateTime.now().add(const Duration(minutes: 2));
+          await prefs.setInt('auth_lockout_until', lockoutTime.millisecondsSinceEpoch);
+          throw 'Too many failed attempts. Account locked for 2 minutes.';
+        } else {
+           throw 'Invalid credentials. ${5 - attempts} attempts remaining.';
+        }
+      }
+      
       throw e.message ?? 'Login failed';
     }
   }
@@ -118,6 +162,27 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sends password reset email to the provided email address
+  /// Throws descriptive error messages for better UX
+  Future<void> resetPassword(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+    } on FirebaseAuthException catch (e) {
+      switch (e.code) {
+        case 'user-not-found':
+          throw 'No account found with this email address.';
+        case 'invalid-email':
+          throw 'Invalid email address format.';
+        case 'too-many-requests':
+          throw 'Too many attempts. Please try again later.';
+        default:
+          throw e.message ?? 'Failed to send password reset email.';
+      }
+    } catch (e) {
+      throw 'An unexpected error occurred. Please try again.';
+    }
+  }
+
   @override
   void dispose() {
     // Cancel stream subscription to prevent memory leaks
@@ -140,15 +205,27 @@ class AuthProvider with ChangeNotifier {
     // Update in database
     await DatabaseHelper.instance.updateUserProfile(updatedUser);
     
-    // Sync to Firebase Auth if name/email changed (optional, best effort)
+    // Sync to Firebase Auth if name/email changed
     try {
         final fUser = _auth.currentUser;
         if (fUser != null) {
-            if (name != null) await fUser.updateDisplayName(name);
-            if (email != null) await fUser.verifyBeforeUpdateEmail(email); 
+            if (name != null && name != fUser.displayName) {
+              await fUser.updateDisplayName(name);
+            }
+            if (email != null && email != fUser.email) {
+              // Sends a verification email to the new address.
+              // The email on the account won't update until the user clicks the link.
+              await fUser.verifyBeforeUpdateEmail(email); 
+            }
         }
     } catch (e) {
         print('Warning: Failed to update Firebase Auth profile: $e');
+        // We don't throw here to avoid blocking the DB update success, 
+        // but we might want to inform the UI if it's critical. 
+        // For now, let's allow the flow to continue as the DB is updated.
+        if (e.toString().contains('requires-recent-login')) {
+           throw 'Security Check: Please logout and login again to update your email.';
+        }
     }
     
     // Update local state

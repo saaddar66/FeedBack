@@ -2,6 +2,7 @@
 /// 
 /// This file demonstrates how other apps can integrate with the feedback system
 /// to submit feedback programmatically.
+library;
 
 import 'feedback_api.dart';
 

@@ -4,11 +4,15 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../providers/feedback_provider.dart';
 import '../../providers/auth_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../widgets/rating_chart.dart';
 import '../../widgets/trends_chart.dart';
 import '../../widgets/filter_dialog.dart';
 import '../../models/selector_models.dart';
 import '../../../data/models/feedback_model.dart';
+import '../../widgets/double_back_to_close_wrapper.dart';
+import '../../widgets/state_widgets.dart';
 
 /// Production-ready dashboard with stats charts filters and recent feedback
 /// Features loading states error handling pull to refresh and responsive layout
@@ -34,17 +38,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadDashboardData() async {
     if (!mounted) return;
     
+    // Auth Check
+    final authProvider = context.read<AuthProvider>();
+    if (authProvider.isLoading) {
+      // Still loading auth state, wait or return to avoid premature fetch
+      return;
+    }
+    
+    final userId = authProvider.user?.id;
+    if (userId == null) {
+      // No user found, redirect to login
+      context.go('/login');
+      return;
+    }
+
     setState(() {
       _hasError = false;
     });
 
     try {
-      // Set current user context before loading data
-      final userId = context.read<AuthProvider>().user?.id;
-      if (userId != null) {
-        context.read<FeedbackProvider>().setCurrentUser(userId);
-      }
-      
+      context.read<FeedbackProvider>().setCurrentUser(userId);
       await context.read<FeedbackProvider>().loadFeedback();
       
       if (mounted) {
@@ -121,7 +134,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
     
-    return Scaffold(
+    return DoubleBackToCloseWrapper(
+      child: Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,19 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (context, isLoading, child) {
           // Show loading on first load only
           if (isLoading && context.read<FeedbackProvider>().feedbackList.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    'Loading dashboard...',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            );
+            return const LoadingWidget(message: 'Loading dashboard...');
           }
 
           // Show error state if data loading failed
@@ -207,42 +209,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       
       bottomNavigationBar: _buildBottomNavigationBar(),
+      ),
     );
   }
 
   /// Builds error state with retry button
   Widget _buildErrorState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Colors.red[300],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Failed to load dashboard',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              _errorMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _loadDashboardData,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
-          ),
-        ],
-      ),
+    return ErrorStateWidget(
+      message: 'Failed to load dashboard\n$_errorMessage',
+      onRetry: _loadDashboardData,
     );
   }
 
@@ -436,27 +411,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Builds empty state for charts when no data
   Widget _buildEmptyChartsState() {
-    return Card(
+    return const Card(
       child: Padding(
-        padding: const EdgeInsets.all(48.0),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                Icons.bar_chart_outlined,
-                size: 48,
-                color: Colors.grey[400],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No chart data available',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
+        padding: EdgeInsets.all(48.0),
+        child: EmptyStateWidget(
+          message: 'No chart data available',
+          icon: Icons.bar_chart_outlined,
         ),
       ),
     );
@@ -650,39 +610,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Builds empty state when no feedback exists
   Widget _buildEmptyFeedbackState() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(48.0),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                Icons.inbox_outlined,
-                size: 64,
-                color: Colors.grey[400],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'No feedback yet',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Feedback will appear here once customers submit responses',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[500],
-                ),
-              ),
-            ],
+    return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(48.0),
+          child: EmptyStateWidget(
+            message: 'No feedback yet\nFeedback will appear here once customers submit responses',
+            icon: Icons.inbox_outlined,
           ),
         ),
-      ),
     );
   }
 
@@ -709,7 +644,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.settings_applications,
                 label: 'Survey Config',
                 onPressed: () => context.go('/config'),
-                color: Colors.blue,
+                color: Colors.grey[700]!,
+              ),
+              _BottomNavButton(
+                icon: Icons.qr_code_2,
+                label: 'Show QR',
+                onPressed: () => _showQrCodeDialog(context),
+                color: Colors.grey[700]!,
               ),
               _BottomNavButton(
                 icon: Icons.settings,
@@ -768,6 +709,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (context) => const FilterDialog(),
+    );
+  }
+
+  /// Shows the QR code in a dialog popup
+  void _showQrCodeDialog(BuildContext context) {
+    // Logic to generate unique URL (similar to WelcomeScreen)
+    String baseUrl;
+    if (kIsWeb) {
+      final uri = Uri.base;
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
+    } else {
+      baseUrl = 'https://feedy-cebf6.web.app/#/survey'; 
+    }
+
+    // Get current user details
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.user;
+    final ownerId = user?.id;
+    final businessName = user?.businessName;
+
+    // Use URL with UID if available
+    final qrData = (ownerId != null && ownerId.isNotEmpty) 
+        ? '$baseUrl?uid=$ownerId' 
+        : baseUrl;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final qrSize = (screenWidth * 0.7).clamp(200.0, 300.0);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Scan to Give Feedback',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
+              QrImageView(
+                data: qrData,
+                version: QrVersions.auto,
+                size: qrSize,
+                backgroundColor: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              if (businessName != null && businessName.isNotEmpty)
+                Text(
+                  'Linked to: $businessName',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.blueGrey,
+                  ),
+                )
+              else if (ownerId != null)
+                Text(
+                   ownerId.length > 4 
+                      ? 'ID: ${ownerId.substring(0, 4)}...'
+                      : 'ID: $ownerId',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -15,6 +15,7 @@ class ConfigurationScreen extends StatefulWidget {
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
   late TextEditingController _surveyTitleController;
+  final ScrollController _scrollController = ScrollController();
   bool _isSaving = false;
 
   @override
@@ -31,6 +32,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   void dispose() {
     // Clean up title controller to prevent memory leaks
     _surveyTitleController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -43,6 +45,17 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
         type: QuestionType.text,
       ),
     );
+    
+    // Automatically scroll to bottom when new question is added
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   /// Removes question from survey at given index
@@ -235,6 +248,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             child: questions.isEmpty
                 ? _buildEmptyState()
                 : ReorderableListView(
+                    scrollController: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                     onReorder: _onReorder,
                     children: questions.asMap().entries.map((entry) {
@@ -419,7 +433,7 @@ class _QuestionCardState extends State<_QuestionCard> {
             
             // Question type dropdown selector
             DropdownButtonFormField<QuestionType>(
-              value: widget.question.type,
+              initialValue: widget.question.type,
               decoration: const InputDecoration(
                 labelText: 'Question Type',
                 border: OutlineInputBorder(),
@@ -464,7 +478,7 @@ class _QuestionCardState extends State<_QuestionCard> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
               TextButton.icon(
                 onPressed: widget.isDisabled ? null : _addOption,
                 icon: const Icon(Icons.add),

@@ -1,0 +1,416 @@
+import 'package:firebase_database/firebase_database.dart';
+import 'dart:developer' as developer;
+import 'base_database.dart';
+import '../models/feedback_model.dart';
+import '../models/user_model.dart';
+import '../models/survey_models.dart';
+
+class FirebaseDatabaseImpl implements BaseDatabase {
+  DatabaseReference? _databaseRef;
+
+  @override
+  Future<void> init() async {
+    try {
+      FirebaseDatabase.instance.setPersistenceEnabled(true);
+      _databaseRef = FirebaseDatabase.instance.ref('feedback');
+      try {
+        await _databaseRef!.limitToFirst(1).get().timeout(const Duration(seconds: 2));
+      } catch (e) {
+        developer.log('Note: Starting in OFFLINE mode (Firebase not reachable immediately)', name: 'FirebaseDatabaseImpl');
+      }
+    } catch (e) {
+      developer.log('Critical Error: Firebase initialization failed: $e', name: 'FirebaseDatabaseImpl', error: e);
+    }
+  }
+
+  void _ensureInitialized() {
+    if (_databaseRef == null) {
+      throw Exception('Database not initialized. Call init() first.');
+    }
+  }
+
+  @override
+  Future<void> createUserProfile(UserModel user) async {
+    _ensureInitialized();
+    if (user.id == null) throw Exception('Cannot save user without ID');
+    try {
+      await _databaseRef!.root.child('users/${user.id}').set(user.toMap());
+    } catch (e) {
+      developer.log('Error creating user profile: $e', name: 'FirebaseDatabaseImpl', error: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<UserModel?> getUserProfile(String uid) async {
+    _ensureInitialized();
+    try {
+      final snapshot = await _databaseRef!.root.child('users/$uid').get();
+      if (snapshot.exists && snapshot.value != null) {
+        final data = Map<String, dynamic>.from(snapshot.value as Map);
+        data['id'] = uid;
+        return UserModel.fromMap(data);
+      }
+    } catch (e) {
+      developer.log('Error fetching user profile: $e', name: 'FirebaseDatabaseImpl', error: e);
+    }
+    return null;
+  }
+
+  @override
+  Future<void> updateUserProfile(UserModel user) async {
+    await createUserProfile(user);
+  }
+
+  @override
+  Future<String> insertFeedback(FeedbackModel feedback) async {
+    _ensureInitialized();
+    final feedbackMap = feedback.toMap();
+    feedbackMap.remove('id');
+    
+    developer.log('Inserting feedback to Firebase', name: 'FirebaseDatabaseImpl');
+    
+    final newFeedbackRef = _databaseRef!.push();
+    await newFeedbackRef.set(feedbackMap);
+    
+    developer.log('Feedback saved with key: ${newFeedbackRef.key}', name: 'FirebaseDatabaseImpl');
+    return newFeedbackRef.key!;
+  }
+
+  @override
+  Future<List<FeedbackModel>> getAllFeedback({
+    int? minRating,
+    int? maxRating,
+    DateTime? startDate,
+    DateTime? endDate,
+    int limit = 100,
+    String? userId,
+  }) async {
+    _ensureInitialized();
+    List<FeedbackModel> feedbackList = [];
+    try {
+      final query = _databaseRef!.orderByChild('owner_id').equalTo(userId).limitToLast(limit);
+      final snapshot = await query.get();
+      
+      if (snapshot.exists && snapshot.value != null) {
+        developer.log('Raw feedback snapshot: ${snapshot.value}', name: 'FirebaseDatabaseImpl');
+        final dynamic val = snapshot.value;
+        if (val is Map) {
+          for (var entry in val.entries) {
+            if (entry.value is Map) {
+              try {
+                final feedbackData = Map<String, dynamic>.from(entry.value as Map);
+                feedbackData['id'] = entry.key.toString();
+                feedbackList.add(FeedbackModel.fromMap(feedbackData));
+              } catch (e) {
+                developer.log('Skipping invalid feedback entry: ${entry.key}', error: e, name: 'FirebaseDatabaseImpl');
+              }
+            }
+          }
+        } else if (val is List) {
+          for (int i = 0; i < val.length; i++) {
+            if (val[i] != null && val[i] is Map) {
+              try {
+                final feedbackData = Map<String, dynamic>.from(val[i] as Map);
+                feedbackData['id'] = i.toString();
+                feedbackList.add(FeedbackModel.fromMap(feedbackData));
+              } catch (e) {
+                developer.log('Skipping invalid feedback entry at index $i', error: e, name: 'FirebaseDatabaseImpl');
+              }
+            }
+          }
+        }
+        developer.log('Parsed ${feedbackList.length} feedback items', name: 'FirebaseDatabaseImpl');
+      } else {
+        developer.log('No feedback data found in snapshot', name: 'FirebaseDatabaseImpl');
+      }
+    } catch (e) {
+      developer.log('Error fetching from Firebase: $e', name: 'FirebaseDatabaseImpl', error: e);
+      return [];
+    }
+
+    final filteredList = feedbackList.where((feedback) {
+      bool matches = true;
+      if (userId != null) {
+        final feedbackOwnerId = feedback.ownerId;
+        // Allow if owner matches OR if feedback has no owner (anonymous/public)
+        if (feedbackOwnerId != null && feedbackOwnerId.isNotEmpty && feedbackOwnerId != userId) {
+          matches = false;
+        }
+      }
+      if (minRating != null && feedback.rating < minRating) matches = false;
+      if (maxRating != null && feedback.rating > maxRating) matches = false;
+      if (startDate != null && feedback.createdAt.isBefore(startDate)) matches = false;
+      if (endDate != null && feedback.createdAt.isAfter(endDate)) matches = false;
+      return matches;
+    }).toList();
+
+    filteredList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return filteredList;
+  }
+
+  @override
+  Future<int> getFeedbackCount({
+    int? minRating,
+    int? maxRating,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? userId,
+  }) async {
+    final list = await getAllFeedback(
+      minRating: minRating,
+      maxRating: maxRating,
+      startDate: startDate,
+      endDate: endDate,
+      userId: userId,
+    );
+    return list.length;
+  }
+
+  @override
+  Future<Map<int, int>> getRatingDistribution({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? userId,
+  }) async {
+    final list = await getAllFeedback(startDate: startDate, endDate: endDate, userId: userId);
+    final Map<int, int> distribution = {};
+    for (var feedback in list) {
+      distribution[feedback.rating] = (distribution[feedback.rating] ?? 0) + 1;
+    }
+    for (int i = 1; i <= 5; i++) {
+      distribution.putIfAbsent(i, () => 0);
+    }
+    return distribution;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getTrendsData({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? userId,
+  }) async {
+    final list = await getAllFeedback(startDate: startDate, endDate: endDate, userId: userId);
+    final Map<String, List<FeedbackModel>> groupedByDate = {};
+    
+    for (var feedback in list) {
+      final dateKey = feedback.createdAt.toIso8601String().substring(0, 10);
+      groupedByDate.putIfAbsent(dateKey, () => []).add(feedback);
+    }
+    
+    final List<Map<String, dynamic>> trendsData = [];
+    groupedByDate.forEach((date, feedbacks) {
+      final count = feedbacks.length;
+      final avgRating = feedbacks.map((f) => f.rating).reduce((a, b) => a + b) / count;
+      trendsData.add({
+        'date': date,
+        'count': count,
+        'avg_rating': avgRating,
+      });
+    });
+    trendsData.sort((a, b) => a['date'].compareTo(b['date']));
+    return trendsData;
+  }
+
+  @override
+  Future<double> getAverageRating({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? userId,
+  }) async {
+    final list = await getAllFeedback(startDate: startDate, endDate: endDate, userId: userId);
+    if (list.isEmpty) return 0.0;
+    final totalRating = list.map((f) => f.rating).reduce((a, b) => a + b);
+    return totalRating / list.length;
+  }
+
+  @override
+  Future<void> deleteFeedback(String id) async {
+    _ensureInitialized();
+    await _databaseRef!.root.child('feedback/$id').remove();
+  }
+
+  @override
+  Future<List<SurveyForm>> getAllSurveys({String? creatorId}) async {
+    _ensureInitialized();
+    try {
+      final snapshot = await _databaseRef!.root.child('surveys').get();
+      if (!snapshot.exists || snapshot.value == null) return [];
+
+      dynamic value;
+      try {
+        value = snapshot.value;
+      } catch (e) {
+        return [];
+      }
+
+      List<SurveyForm> surveys = [];
+      if (value is Map) {
+         for (var entry in value.entries) {
+           if (entry.value is Map) {
+             try {
+                final map = Map<String, dynamic>.from(entry.value as Map);
+                map['id'] = entry.key.toString();
+                surveys.add(SurveyForm.fromMap(map));
+             } catch(e) { /* ignore */ }
+           }
+         }
+      } else if (value is List) {
+         for (int i = 0; i < value.length; i++) {
+           if (value[i] is Map) {
+              try {
+                 final map = Map<String, dynamic>.from(value[i] as Map);
+                 surveys.add(SurveyForm.fromMap(map));
+              } catch(e) { /* ignore */ }
+           }
+         }
+      }
+
+      if (creatorId != null) {
+        surveys = surveys.where((s) => s.creatorId == creatorId).toList();
+      }
+      return surveys;
+    } catch (e) {
+      developer.log('Error fetching surveys: $e', name: 'FirebaseDatabaseImpl', error: e);
+      return [];
+    }
+  }
+
+  // Helper methods for saveSurvey
+  String _mapQuestionTypeForWeb(QuestionType type) {
+    switch (type) {
+      case QuestionType.text: return 'text';
+      case QuestionType.rating: return 'rating';
+      case QuestionType.singleChoice: return 'singleChoice';
+      case QuestionType.multipleChoice: return 'multipleChoice';
+    }
+  }
+
+  Map<String, dynamic> _transformSurveyForFirebase(SurveyForm survey) {
+    final baseMap = survey.toMap();
+    final Map<String, dynamic> questionsMap = {};
+    for (var question in survey.questions) {
+      final questionMap = question.toMap();
+      questionMap['value'] = survey.isActive;
+      questionMap['text'] = question.title;
+      questionMap['type'] = _mapQuestionTypeForWeb(question.type);
+      questionMap['required'] = true;
+      questionsMap[question.id] = questionMap;
+    }
+    baseMap['questions'] = questionsMap;
+    return baseMap;
+  }
+
+  @override
+  Future<void> saveSurvey(SurveyForm survey) async {
+    _ensureInitialized();
+    final transformedData = _transformSurveyForFirebase(survey);
+    await _databaseRef!.root.child('surveys/${survey.id}').set(transformedData);
+  }
+
+  @override
+  Future<void> deleteSurvey(String surveyId) async {
+    _ensureInitialized();
+    await _databaseRef!.root.child('surveys/$surveyId').remove();
+  }
+
+  @override
+  Future<void> activateSurvey(String surveyId) async {
+    // Logic from original DB helper
+    final surveys = await getAllSurveys();
+    final targetSurvey = surveys.firstWhere((s) => s.id == surveyId);
+    final targetCreatorId = targetSurvey.creatorId;
+    final shouldActivate = !targetSurvey.isActive;
+    final userSurveys = surveys.where((s) => s.creatorId == targetCreatorId).toList();
+
+    for (var s in userSurveys) {
+      s.isActive = (shouldActivate && s.id == surveyId);
+    }
+
+    Map<String, Object?> updates = {};
+    for (var s in userSurveys) {
+      updates['surveys/${s.id}/isActive'] = s.isActive;
+      final questionsMap = <String, dynamic>{};
+      for (var question in s.questions) {
+        final questionMap = question.toMap();
+        questionMap['value'] = s.isActive;
+        questionMap['text'] = question.title;
+        questionMap['type'] = _mapQuestionTypeForWeb(question.type);
+        questionMap['required'] = true;
+        questionsMap[question.id] = questionMap;
+      }
+      updates['surveys/${s.id}/questions'] = questionsMap;
+    }
+    if (updates.isNotEmpty) {
+      await _databaseRef!.root.update(updates);
+    }
+  }
+
+  @override
+  Future<SurveyForm?> getActiveSurvey({String? creatorId}) async {
+    final surveys = await getAllSurveys(creatorId: creatorId);
+    try {
+      return surveys.firstWhere((s) => s.isActive);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> submitSurveyResponse(Map<String, dynamic> answers, {String? ownerId}) async {
+    _ensureInitialized();
+    final responseRef = _databaseRef!.root.child('survey_responses').push();
+    await responseRef.set({
+      'answers': answers,
+      'submittedAt': DateTime.now().toIso8601String(),
+      'ownerId': ownerId,
+    });
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId}) async {
+    _ensureInitialized();
+    try {
+      final snapshot = await _databaseRef!.root.child('survey_responses').get();
+      if (snapshot.exists && snapshot.value != null) {
+        final dynamic value = snapshot.value;
+        List<Map<String, dynamic>> responses = [];
+        if (value is Map) {
+          value.forEach((key, val) {
+            final map = Map<String, dynamic>.from(val as Map);
+            map['id'] = key;
+             if (!map.containsKey('answers')) {
+               final answers = <String, dynamic>{};
+               final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+               map.forEach((k, v) {
+                 if (!metadataFields.contains(k)) answers[k] = v;
+               });
+               if (answers.isNotEmpty) {
+                 for (var k in answers.keys) map.remove(k);
+                 map['answers'] = answers;
+               }
+             }
+             responses.add(map);
+          });
+        }
+        
+        if (ownerId != null) {
+           return responses.where((r) {
+            final responseOwnerId = r['ownerId'];
+            return responseOwnerId == ownerId || responseOwnerId == null || responseOwnerId.toString().isEmpty;
+          }).toList();
+        }
+        return responses;
+      }
+    } catch (e) {
+      developer.log('Error fetching survey responses: $e', name: 'FirebaseDatabaseImpl', error: e);
+    }
+    return [];
+  }
+
+  @override
+  Future<void> deleteSurveyResponse(String id) async {
+    _ensureInitialized();
+    await _databaseRef!.root.child('survey_responses/$id').remove();
+  }
+}

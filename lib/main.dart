@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:developer' as developer;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:feedy/config/database_config.dart';
@@ -13,6 +14,7 @@ import 'package:feedy/presentation/providers/public_submission_provider.dart';
 import 'package:feedy/presentation/providers/auth_provider.dart';
 import 'package:feedy/presentation/screens/welcome_screen.dart';
 import 'package:feedy/presentation/screens/signup_screen.dart';
+import 'package:feedy/presentation/screens/forgot_password_screen.dart';
 // Admin screens
 import 'package:feedy/presentation/screens/admin/login_screen.dart';
 import 'package:feedy/presentation/screens/admin/dashboard_screen.dart';
@@ -26,11 +28,14 @@ import 'package:feedy/presentation/screens/public/feedback_form_screen.dart';
 import 'package:feedy/presentation/screens/public/survey_screen.dart';
 import 'package:feedy/presentation/screens/public/qr_feedback_web_screen.dart';
 import 'package:feedy/presentation/screens/public/thank_you_screen.dart';
-// Import firebase_options.dart after running: flutterfire configure
+import 'package:feedy/data/database/firebase_database_impl.dart';
+import 'package:feedy/data/database/mock_database_impl.dart';
+import 'package:feedy/data/database/base_database.dart';
+import 'dart:ui';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'firebase_options.dart';
 
-import 'dart:ui'; // For PlatformDispatcher
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
 
 /// Main entry point of the application
 /// Initializes Firebase and sets up the app with Provider for state management
@@ -40,9 +45,13 @@ void main() async {
   
   // Load environment variables for secure key management
   await dotenv.load(fileName: ".env");
+
+  // Initialize database factory
+  final useMock = dotenv.env['USE_MOCK_DB'] == 'true';
+  developer.log('Database Mode: ${useMock ? "MOCK" : "FIREBASE"}', name: 'Main');
   
-  // Initialize database factory based on platform (Web, Desktop, Mobile)
-  configureDatabase();
+  final BaseDatabase database = useMock ? MockDatabaseImpl() : FirebaseDatabaseImpl();
+  DatabaseHelper.instance.configure(database);
   
   // Initialize Firebase (and Crashlytics)
   try {
@@ -61,11 +70,13 @@ void main() async {
     };
 
   } catch (e) {
-    print('Firebase initialization failed: $e');
+    developer.log('Firebase initialization failed: $e', error: e);
     // Continue anyway, DatabaseHelper generally handles offline/mock
   }
+
+  // Initialize the database singleton AFTER Firebase is initialized
+  await DatabaseHelper.instance.init();
   
-  // Initialize the database singleton
   final databaseHelper = DatabaseHelper.instance;
   // Note: We removed explicit "Mock Mode" fallback for production. 
   // It will now try to use Firebase Offline persistence.
@@ -114,6 +125,10 @@ class MyApp extends StatelessWidget {
         GoRoute(
           path: '/signup',
           builder: (context, state) => const SignupScreen(),
+        ),
+        GoRoute(
+          path: '/forgot-password',
+          builder: (context, state) => const ForgotPasswordScreen(),
         ),
         // Admin flow
         GoRoute(

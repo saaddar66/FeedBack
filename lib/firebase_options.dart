@@ -3,6 +3,7 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
@@ -40,52 +41,52 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
-    appId: '1:205492068242:web:04e1bd80de8974aa4eeb4b',
-    messagingSenderId: '205492068242',
-    projectId: 'feedy-cebf6',
-    authDomain: 'feedy-cebf6.firebaseapp.com',
-    databaseURL: 'https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'feedy-cebf6.firebasestorage.app',
+  static FirebaseOptions get web => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_API_KEY_WEB']!,
+    appId: dotenv.env['FIREBASE_APP_ID_WEB']!,
+    messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
+    projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
+    authDomain: dotenv.env['FIREBASE_AUTH_DOMAIN'],
+    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
+    storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
   );
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyC_sncSPLcLduT2VlAFBt0j6PUC8yHkoL8',
-    appId: '1:205492068242:android:3f19b78355a9760f4eeb4b',
-    messagingSenderId: '205492068242',
-    projectId: 'feedy-cebf6',
-    databaseURL: 'https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'feedy-cebf6.firebasestorage.app',
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_API_KEY_ANDROID']!,
+    appId: dotenv.env['FIREBASE_APP_ID_ANDROID']!,
+    messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
+    projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
+    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
+    storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBdbGEPukXZDORNVLeJp7wqbjf5BGEbaVU',
-    appId: '1:205492068242:ios:c3b43c4ee17cd7ee4eeb4b',
-    messagingSenderId: '205492068242',
-    projectId: 'feedy-cebf6',
-    databaseURL: 'https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'feedy-cebf6.firebasestorage.app',
-    iosBundleId: 'com.example.feedy',
+  static FirebaseOptions get ios => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_API_KEY_IOS']!,
+    appId: dotenv.env['FIREBASE_APP_ID_IOS']!,
+    messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
+    projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
+    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
+    storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
+    iosBundleId: dotenv.env['FIREBASE_IOS_BUNDLE_ID'],
   );
 
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBdbGEPukXZDORNVLeJp7wqbjf5BGEbaVU',
-    appId: '1:205492068242:ios:c3b43c4ee17cd7ee4eeb4b',
-    messagingSenderId: '205492068242',
-    projectId: 'feedy-cebf6',
-    databaseURL: 'https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'feedy-cebf6.firebasestorage.app',
-    iosBundleId: 'com.example.feedy',
+  static FirebaseOptions get macos => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_API_KEY_IOS']!,
+    appId: dotenv.env['FIREBASE_APP_ID_IOS']!,
+    messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
+    projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
+    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
+    storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
+    iosBundleId: dotenv.env['FIREBASE_IOS_BUNDLE_ID'],
   );
 
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
-    appId: '1:205492068242:web:b9acf05c47f21fc84eeb4b',
-    messagingSenderId: '205492068242',
-    projectId: 'feedy-cebf6',
-    authDomain: 'feedy-cebf6.firebaseapp.com',
-    databaseURL: 'https://feedy-cebf6-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'feedy-cebf6.firebasestorage.app',
+  static FirebaseOptions get windows => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_API_KEY_WINDOWS']!,
+    appId: dotenv.env['FIREBASE_APP_ID_WINDOWS']!,
+    messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
+    projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
+    authDomain: dotenv.env['FIREBASE_AUTH_DOMAIN'],
+    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
+    storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
   );
 }

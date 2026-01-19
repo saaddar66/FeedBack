@@ -125,6 +125,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final authProvider = context.read<AuthProvider>();
       
+      
+      // Check if email changed to show specific message
+      final bool emailChanged = _emailController.text.trim() != _originalEmail;
+
       // Update user profile in database
       await authProvider.updateUserProfile(
         name: _nameController.text.trim(),
@@ -143,12 +147,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _hasUnsavedChanges = false;
         });
         
-        _showSuccessSnackbar('Profile updated successfully!');
+        if (emailChanged) {
+          _showSuccessSnackbar('Verification email sent. Please check your inbox.');
+        } else {
+          _showSuccessSnackbar('Profile updated successfully!');
+        }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);
-        _showErrorSnackbar('Failed to update profile: $e');
+        
+        final errorMessage = e.toString();
+        if (errorMessage.contains('Security check')) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage.replaceAll('Exception: ', '')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Logout',
+                textColor: Colors.white,
+                onPressed: () {
+                  context.read<AuthProvider>().logout();
+                  context.go('/');
+                },
+              ),
+            ),
+          );
+        } else {
+          _showErrorSnackbar('Failed to update profile: $e');
+        }
       }
     }
   }

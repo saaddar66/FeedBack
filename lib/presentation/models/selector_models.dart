@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 
 /// Value class for stats data to enable proper equality comparison in Selectors
 /// Prevents unnecessary rebuilds by comparing actual values instead of Map references

@@ -51,7 +51,7 @@ class _FilterDialogState extends State<FilterDialog> {
                 // Minimum rating dropdown
                 Expanded(
                   child: DropdownButtonFormField<int>(
-                    value: _minRating,
+                    initialValue: _minRating,
                     decoration: const InputDecoration(
                       labelText: 'Min Rating',
                       border: OutlineInputBorder(),
@@ -69,7 +69,7 @@ class _FilterDialogState extends State<FilterDialog> {
                 // Maximum rating dropdown
                 Expanded(
                   child: DropdownButtonFormField<int>(
-                    value: _maxRating,
+                    initialValue: _maxRating,
                     decoration: const InputDecoration(
                       labelText: 'Max Rating',
                       border: OutlineInputBorder(),

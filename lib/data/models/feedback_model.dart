@@ -9,6 +9,7 @@ class FeedbackModel {
   final DateTime createdAt;    // Timestamp when feedback was created
 
   final String? ownerId;       // ID of the user (admin) who owns this feedback
+  final String? surveyId;      // ID of the survey this feedback is associated with (optional)
 
   FeedbackModel({
     this.id,
@@ -18,6 +19,7 @@ class FeedbackModel {
     required this.comments,
     required this.createdAt,
     this.ownerId,
+    this.surveyId,
   });
 
   /// Converts the model to a Map for database storage
@@ -31,6 +33,7 @@ class FeedbackModel {
       'comments': comments,
       'created_at': createdAt.toIso8601String(),
       'owner_id': ownerId,
+      'survey_id': surveyId,
     };
   }
 
@@ -43,6 +46,15 @@ class FeedbackModel {
         ? idValue 
         : (idValue is int ? idValue.toString() : null);
     
+    // STRICTLY prioritize snake_case 'owner_id' as per database requirement
+    // Only fall back to camelCase if absolutely necessary for legacy instances
+    final ownerIdValue = map['owner_id'] ?? map['ownerId'];
+    final String? ownerId = ownerIdValue is String ? ownerIdValue : null;
+    
+    // Handle both snake_case (survey_id) and camelCase (surveyId)
+    final surveyIdValue = map['survey_id'] ?? map['surveyId'];
+    final String? surveyId = surveyIdValue is String ? surveyIdValue : null;
+    
     return FeedbackModel(
       id: id,
       name: map['name'] as String?,
@@ -50,7 +62,8 @@ class FeedbackModel {
       rating: map['rating'] as int,
       comments: map['comments'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
-      ownerId: map['owner_id'] as String?,
+      ownerId: ownerId,
+      surveyId: surveyId,
     );
   }
 
@@ -64,6 +77,7 @@ class FeedbackModel {
     String? comments,
     DateTime? createdAt,
     String? ownerId,
+    String? surveyId,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -73,6 +87,7 @@ class FeedbackModel {
       comments: comments ?? this.comments,
       createdAt: createdAt ?? this.createdAt,
       ownerId: ownerId ?? this.ownerId,
+      surveyId: surveyId ?? this.surveyId,
     );
   }
 }

@@ -13,8 +13,7 @@ class SurveyScreen extends StatefulWidget {
 }
 
 class _SurveyScreenState extends State<SurveyScreen> {
-  // Map to store answers: key is question ID, value is the answer
-  final Map<String, dynamic> _answers = {};
+
 
   @override
   void initState() {
@@ -30,8 +29,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch for changes in configured questions
-    final questions = context.watch<FeedbackProvider>().activeSurveyQuestions;
+    // Watch for changes in configured questions and answers
+    final provider = context.watch<FeedbackProvider>();
+    final questions = provider.activeSurveyQuestions;
+    final answers = provider.currentSurveyAnswers;
 
     return Scaffold(
       appBar: AppBar(
@@ -49,7 +50,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
             children: [
               // Button to go to the original General Feedback form
               ElevatedButton.icon(
-                onPressed: () => context.go('/feedback'),
+                onPressed: () {
+                  // Preserve the uid query parameter when navigating to feedback
+                  final state = GoRouterState.of(context);
+                  final uid = state.uri.queryParameters['uid'];
+                  if (uid != null && uid.isNotEmpty) {
+                    context.go('/feedback?uid=$uid');
+                  } else {
+                    context.go('/feedback');
+                  }
+                },
                 icon: const Icon(Icons.feedback_outlined),
                 label: const Text('Submit General Feedback'),
                 style: ElevatedButton.styleFrom(
@@ -131,14 +141,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
   }
 
   Widget _buildAnswerInput(QuestionModel question) {
+    final answers = context.watch<FeedbackProvider>().currentSurveyAnswers;
+
     switch (question.type) {
       case QuestionType.text:
         return _SurveyTextField(
-          initialValue: _answers[question.id] as String? ?? '',
+          initialValue: answers[question.id] as String? ?? '',
           onChanged: (value) {
-            setState(() {
-              _answers[question.id] = value;
-            });
+            context.read<FeedbackProvider>().updateSurveyAnswer(question.id, value);
           },
         );
       
@@ -147,7 +157,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(5, (index) {
             final rating = index + 1;
-            final isSelected = (_answers[question.id] ?? 0) >= rating;
+            final isSelected = (answers[question.id] ?? 0) >= rating;
             return IconButton(
               icon: Icon(
                 isSelected ? Icons.star : Icons.star_border,
@@ -155,9 +165,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                 size: 32,
               ),
               onPressed: () {
-                setState(() {
-                  _answers[question.id] = rating;
-                });
+                context.read<FeedbackProvider>().updateSurveyAnswer(question.id, rating);
               },
             );
           }),
@@ -175,11 +183,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
             return RadioListTile<String>(
               title: Text(option),
               value: option,
-              groupValue: _answers[question.id],
+              groupValue: answers[question.id],
               onChanged: (value) {
-                setState(() {
-                  _answers[question.id] = value;
-                });
+                context.read<FeedbackProvider>().updateSurveyAnswer(question.id, value);
               },
             );
           }).toList(),
@@ -193,7 +199,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           );
         }
         // Initialize as empty list if not set
-        final selectedOptions = _answers[question.id] as List<String>? ?? [];
+        final selectedOptions = answers[question.id] as List<String>? ?? [];
         
         return Column(
           children: question.options.map((option) {
@@ -201,15 +207,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
               title: Text(option),
               value: selectedOptions.contains(option),
               onChanged: (checked) {
-                setState(() {
-                  final currentList = List<String>.from(selectedOptions);
-                  if (checked == true) {
-                    currentList.add(option);
-                  } else {
-                    currentList.remove(option);
-                  }
-                  _answers[question.id] = currentList;
-                });
+                final currentList = List<String>.from(selectedOptions);
+                if (checked == true) {
+                  currentList.add(option);
+                } else {
+                  currentList.remove(option);
+                }
+                context.read<FeedbackProvider>().updateSurveyAnswer(question.id, currentList);
               },
             );
           }).toList(),
@@ -221,24 +225,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
   }
 
   void _submitSurvey() async {
-    if (_answers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please answer at least one question')),
-      );
-      return;
-    }
-
     try {
-      // Get ownerId from query parameters to link the response
-      final state = GoRouterState.of(context);
-      final ownerId = state.uri.queryParameters['uid'];
-      
-      // Set current user context if ownerId is available
-      if (ownerId != null) {
-        context.read<FeedbackProvider>().setCurrentUser(ownerId);
-      }
-      
-      await context.read<FeedbackProvider>().submitSurveyAnswers(_answers);
+      await context.read<FeedbackProvider>().submitCurrentAnswers();
       
       if (!mounted) return;
       
@@ -249,9 +237,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
         ),
       );
       
-      setState(() {
-        _answers.clear();
-      });
+      // Navigate BEFORE clearing state (although state is cleared in provider)
+      // Actually provider clears it, so we rely on that.
       context.go('/');
     } catch (e) {
       if (!mounted) return;
@@ -263,6 +250,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       );
     }
   }
+
 }
 
 class _SurveyTextField extends StatefulWidget {

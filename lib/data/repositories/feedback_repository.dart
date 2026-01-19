@@ -18,6 +18,7 @@ class FeedbackRepository {
     required int rating,
     required String comments,
     String? ownerId,
+    String? surveyId,
   }) async {
     final feedback = FeedbackModel(
       name: name?.isEmpty == true ? null : name,
@@ -26,6 +27,7 @@ class FeedbackRepository {
       comments: comments,
       createdAt: DateTime.now(),
       ownerId: ownerId,
+      surveyId: surveyId,
     );
 
     return await _databaseHelper.insertFeedback(feedback);

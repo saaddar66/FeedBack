@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/double_back_to_close_wrapper.dart';
 /// Production-ready login screen with enhanced UX and security features
 /// Includes email/password authentication, validation, error handling, and password visibility toggle
 class LoginScreen extends StatefulWidget {
@@ -158,17 +159,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Navigates to forgot password screen placeholder
-  void _handleForgotPassword() {
-    _showSuccessSnackbar('Password reset feature coming soon!');
-    // TODO: Implement forgot password functionality
-  }
 
   @override
   Widget build(BuildContext context) {
     final isLocked = _isAccountLocked();
     
-    return Scaffold(
+    return DoubleBackToCloseWrapper(
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Admin Login'),
         leading: IconButton(
@@ -297,18 +294,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   
-                  // Forgot password link aligned to right
+                  // Forgot Password link
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _isLoading ? null : _handleForgotPassword,
-                      child: const Text(
+                      onPressed: _isLoading ? null : () => context.go('/forgot-password'),
+                      child: Text(
                         'Forgot Password?',
-                        style: TextStyle(fontSize: 14),
+                        style: TextStyle(
+                          color: Colors.blue[700],
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                   
                   // Login button with loading spinner
                   ElevatedButton(
@@ -397,6 +398,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

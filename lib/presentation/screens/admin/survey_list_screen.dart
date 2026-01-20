@@ -38,7 +38,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
     try {
       final userId = context.read<AuthProvider>().user?.id.toString();
-      await context.read<FeedbackProvider>().loadSurveys(userId: userId);
+      await context.read<FeedbackProvider>().loadSurveys(userId: userId); // Fetch all surveys for this user
       
       if (mounted) {
         setState(() => _isLoading = false);
@@ -60,11 +60,11 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
   Future<void> _createNewSurvey() async {
     try {
       final userId = context.read<AuthProvider>().user?.id.toString();
-      context.read<FeedbackProvider>().startEditingSurvey(null, creatorId: userId);
+      context.read<FeedbackProvider>().startEditingSurvey(null, creatorId: userId); // Initialize blank survey
       await context.push('/config/edit');
       
       if (mounted) {
-         await _loadSurveys();
+         await _loadSurveys(); // Refresh list after returning
       }
     } catch (e) {
       if (mounted) {
@@ -78,11 +78,11 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
     if (_processingIds.contains(survey.id)) return;
     
     try {
-      context.read<FeedbackProvider>().startEditingSurvey(survey);
+      context.read<FeedbackProvider>().startEditingSurvey(survey); // Load survey into editor state
       await context.push('/config/edit');
       
       if (mounted) {
-         await _loadSurveys();
+         await _loadSurveys(); // Refresh list to show any changes
       }
     } catch (e) {
       if (mounted) {
@@ -113,7 +113,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
               setState(() => _processingIds.add(survey.id));
               
               try {
-                await context.read<FeedbackProvider>().deleteSurvey(survey.id);
+                await context.read<FeedbackProvider>().deleteSurvey(survey.id); // Permanently remove survey
                 
                 if (context.mounted) {
                   _showSuccessSnackbar('Survey deleted successfully');
@@ -146,7 +146,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
     final wasActive = survey.isActive;
     
     try {
-      await context.read<FeedbackProvider>().toggleSurveyActive(survey.id);
+      await context.read<FeedbackProvider>().toggleSurveyActive(survey.id); // Set active/inactive in DB
       
       if (mounted) {
         _showSuccessSnackbar(wasActive ? 'Survey deactivated' : 'Survey activated');
@@ -193,7 +193,8 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final surveys = context.watch<FeedbackProvider>().surveys;
+    final surveys = context.watch<FeedbackProvider>().surveys; // Listen to survey list changes
+
 
     return Scaffold(
       appBar: AppBar(
@@ -318,7 +319,8 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
   /// Builds survey card with all actions and loading states
   Widget _buildSurveyCard(BuildContext context, SurveyForm survey) {
-    final isProcessing = _processingIds.contains(survey.id);
+    final isProcessing = _processingIds.contains(survey.id); // Check if operation pending for this item
+
     
     return Opacity(
       opacity: isProcessing ? 0.5 : 1.0,

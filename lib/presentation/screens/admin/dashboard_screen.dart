@@ -57,8 +57,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      context.read<FeedbackProvider>().setCurrentUser(userId);
+      context.read<FeedbackProvider>().setCurrentUser(userId); // Bind dashboard to this user
       await context.read<FeedbackProvider>().loadFeedback();
+      
       
       if (mounted) {
         setState(() => _lastRefreshTime = DateTime.now());
@@ -139,6 +140,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          // Header with welcome message for authenticity
           children: [
             const Text('Feedback Dashboard'),
             if (user != null)
@@ -194,7 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Selector<FeedbackProvider, bool>(
         selector: (_, provider) => provider.isLoading,
         builder: (context, isLoading, child) {
-          // Show loading on first load only
+          // Show loading on first load only (prevents flickering on refresh)
           if (isLoading && context.read<FeedbackProvider>().feedbackList.isEmpty) {
             return const LoadingWidget(message: 'Loading dashboard...');
           }
@@ -225,7 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildDashboardContent() {
     return RefreshIndicator(
       onRefresh: () async {
-        await _loadDashboardData();
+        await _loadDashboardData(); // Trigger data reload on pull
         if (mounted) {
           _showSuccessSnackbar('Dashboard refreshed');
         }
@@ -257,7 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 
-                // Stats Cards with optimized selector
+                // Stats Cards with optimized selector (rebuilds only when stats change)
                 _buildStatsCardsSelector(),
                 const SizedBox(height: 16),
                 
@@ -298,7 +300,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icons.list_alt,
             label: 'All Feedback',
             color: Colors.blue,
-            onTap: () => context.go('/feedback-results'),
+            onTap: () => context.go('/feedback-results'), // Navigate to full feedback list
           ),
         ),
         const SizedBox(width: 12),
@@ -307,7 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icons.assessment_outlined,
             label: 'All Surveys',
             color: Colors.purple,
-            onTap: () => context.go('/survey-results'),
+            onTap: () => context.go('/survey-results'), // Navigate to full survey list
           ),
         ),
       ],

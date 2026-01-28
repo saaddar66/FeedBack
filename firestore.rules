@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Anyone can read user profiles (for public display)
+      allow read: if true;
+      // Only the user can create/update their own profile
+      allow create, update: if isOwner(userId);
+      // Only the user can delete their own profile
+      allow delete: if isOwner(userId);
+    }
+    
+    // Menu sections - public read for active menus, owner write
+    match /menu_sections/{menuId} {
+      // Public can read active menus, owners can read all their menus
+      allow read: if resource.data.isActive == true || 
+                     isOwner(resource.data.ownerId);
+      
+      // Only owner can create/update their menus
+      allow create: if isSignedIn() && 
+                       request.resource.data.ownerId == request.auth.uid;
+      allow update: if isOwner(resource.data.ownerId);
+      
+      // Only owner can delete their menus
+      allow delete: if isOwner(resource.data.ownerId);
+    }
+    
+    // Surveys - public read for active, owner write
+    match /surveys/{surveyId} {
+      // Public can read active surveys, creators can read all their surveys
+      allow read: if resource.data.isActive == true || 
+                     isOwner(resource.data.creatorId);
+      
+      // Only creator can create/update their surveys
+      allow create: if isSignedIn() && 
+                       request.resource.data.creatorId == request.auth.uid;
+      allow update: if isOwner(resource.data.creatorId);
+      
+      // Only creator can delete their surveys
+      allow delete: if isOwner(resource.data.creatorId);
+    }
+    
+    // Feedback - owner read, public write (anonymous feedback allowed)
+    match /feedback/{feedbackId} {
+      // Only owner can read their feedback
+      allow read: if isOwner(resource.data.owner_id);
+      
+      // Anyone can submit feedback (anonymous allowed)
+      allow create: if true;
+      
+      // Only owner can update/delete feedback
+      allow update, delete: if isOwner(resource.data.owner_id);
+    }
+    
+    // Survey responses - owner read, public write (anonymous responses allowed)
+    match /survey_responses/{responseId} {
+      // Only owner can read responses to their surveys
+      allow read: if isOwner(resource.data.owner_id);
+      
+      // Anyone can submit survey responses (anonymous allowed)
+      allow create: if true;
+      
+      // Only owner can update/delete responses
+      allow update, delete: if isOwner(resource.data.owner_id);
+    }
+  }
+}

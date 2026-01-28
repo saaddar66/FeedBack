@@ -23,7 +23,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final state = GoRouterState.of(context);
       final ownerId = state.uri.queryParameters['uid'];
       
-      context.read<FeedbackProvider>().loadActiveSurvey(userId: ownerId);
+      print('DEBUG: Loading survey for ownerId: $ownerId'); // Debug log
+
+      if (ownerId != null && ownerId.isNotEmpty) {
+        context.read<FeedbackProvider>().loadActiveSurvey(userId: ownerId);
+      } else {
+        // Handle case where no UID is provided (maybe show a generic error or default survey)
+        print('DEBUG: No ownerId found in URL. Cannot load specific survey.');
+        context.read<FeedbackProvider>().loadActiveSurvey(userId: null); // Or handle error UI
+      }
     });
   }
 
@@ -226,6 +234,17 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   void _submitSurvey() async {
     try {
+      // Pass the ownerId (uid from URL) to the submit method
+      final state = GoRouterState.of(context);
+      final ownerId = state.uri.queryParameters['uid'];
+      
+      // We need to ensure the provider uses this ID when submitting
+      // Currently submitCurrentAnswers uses _currentUserId from provider state.
+      // We must ensure provider state matches the URL uid for public users.
+      if (ownerId != null) {
+         context.read<FeedbackProvider>().setCurrentUser(ownerId);
+      }
+      
       await context.read<FeedbackProvider>().submitCurrentAnswers();
       
       if (!mounted) return;

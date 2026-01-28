@@ -13,12 +13,18 @@ class QuestionModel {
   String title;                 // Question text
   QuestionType type;            // Type of question
   List<String> options;         // Available choices (for single/multiple choice)
+  double? price;                // Price for the dish (if used as a menu item)
+  String? description;          // Additional details/description for the dish
+  bool isAvailable;             // Whether the dish is available on the menu
 
   QuestionModel({
     required this.id,
     required this.title,
     required this.type,
     List<String>? options,
+    this.price,
+    this.description,
+    this.isAvailable = true,
   }) : options = options ?? [];
 
   /// Creates a copy of the question with updated values
@@ -26,12 +32,18 @@ class QuestionModel {
     String? title,
     QuestionType? type,
     List<String>? options,
+    double? price,
+    String? description,
+    bool? isAvailable,
   }) {
     return QuestionModel(
       id: id,
       title: title ?? this.title,
       type: type ?? this.type,
       options: options ?? this.options,
+      price: price ?? this.price,
+      description: description ?? this.description,
+      isAvailable: isAvailable ?? this.isAvailable,
     );
   }
 
@@ -42,6 +54,9 @@ class QuestionModel {
       'title': title,
       'type': type.name, // Save enum as string
       'options': options, // Save list directly
+      'price': price,
+      'description': description,
+      'isAvailable': isAvailable,
     };
   }
 
@@ -52,21 +67,32 @@ class QuestionModel {
     if (map['options'] != null) {
       final optionsData = map['options'];
       if (optionsData is List) {
-        parsedOptions = List<String>.from(optionsData);
+        parsedOptions = optionsData.map((e) => e.toString()).toList();
       } else if (optionsData is Map) {
         // If options come as a Map, extract the values
         parsedOptions = optionsData.values.map((v) => v.toString()).toList();
       }
     }
 
+    // Safely parse enum
+    QuestionType questionType = QuestionType.text; // Default
+    if (map['type'] != null) {
+        try {
+           questionType = QuestionType.values.firstWhere(
+            (e) => e.name == map['type'].toString(),
+            orElse: () => QuestionType.text,
+          );
+        } catch (_) {}
+    }
+
     return QuestionModel(
       id: map['id']?.toString() ?? '', // Safely convert to string even if it's a number
       title: map['title']?.toString() ?? '',
-      type: QuestionType.values.firstWhere(
-        (e) => e.name == map['type'],
-        orElse: () => QuestionType.text,
-      ),
+      type: questionType,
       options: parsedOptions,
+      price: (map['price'] is num) ? (map['price'] as num).toDouble() : null,
+      description: map['description']?.toString(), // Explicitly cast/convert
+      isAvailable: map['isAvailable'] == true || map['isAvailable'] == 'true', // Handle string bools too
     );
   }
 }
@@ -79,6 +105,8 @@ class SurveyForm {
   List<QuestionModel> questions;
   final DateTime createdAt;
   final String? creatorId;
+  final double? taxRate;           // Tax percentage for this menu section
+  final double? serviceChargeRate; // Service charge percentage
 
   SurveyForm({
     required this.id,
@@ -87,6 +115,8 @@ class SurveyForm {
     List<QuestionModel>? questions,
     DateTime? createdAt,
     this.creatorId,
+    this.taxRate,
+    this.serviceChargeRate,
   }) : questions = questions ?? [],
        createdAt = createdAt ?? DateTime.now();
 
@@ -95,6 +125,8 @@ class SurveyForm {
     bool? isActive,
     List<QuestionModel>? questions,
     String? creatorId,
+    double? taxRate,
+    double? serviceChargeRate,
   }) {
     return SurveyForm(
       id: id,
@@ -103,6 +135,8 @@ class SurveyForm {
       questions: questions ?? this.questions,
       createdAt: createdAt,
       creatorId: creatorId ?? this.creatorId,
+      taxRate: taxRate ?? this.taxRate,
+      serviceChargeRate: serviceChargeRate ?? this.serviceChargeRate,
     );
   }
 
@@ -114,6 +148,8 @@ class SurveyForm {
       'questions': questions.map((q) => q.toMap()).toList(),
       'createdAt': createdAt.toIso8601String(),
       'creatorId': creatorId,
+      'taxRate': taxRate,
+      'serviceChargeRate': serviceChargeRate,
     };
   }
 
@@ -123,37 +159,35 @@ class SurveyForm {
     if (map['questions'] != null) {
       final questionsData = map['questions'];
       
-      // Skip if questions is a String (corrupted data)
-      if (questionsData is String) {
-        print('Warning: questions field is a String, skipping: $questionsData');
-      } else if (questionsData is List) {
-        // Handle as List (standard JSON array)
-        for (var q in questionsData) {
-          if (q is Map) {
-            try {
-              parsedQuestions.add(QuestionModel.fromMap(Map<String, dynamic>.from(q)));
-            } catch (e) {
-              print('Skipping invalid question in list: $e');
-            }
-          }
-        }
-      } else if (questionsData is Map) {
-        // Handle as Map (Firebase object structure {id: {data}})
-        questionsData.forEach((key, value) {
-          if (value is Map) {
-            try {
-              final questionMap = Map<String, dynamic>.from(value);
-              // Ensure ID is set (use key if ID is missing in value)
-              final existingId = questionMap['id'];
-              if (existingId == null || existingId.toString().isEmpty) {
-                questionMap['id'] = key.toString();
+      try {
+        if (questionsData is List) {
+          for (var q in questionsData) {
+            if (q != null && q is Map) {
+              try {
+                parsedQuestions.add(QuestionModel.fromMap(Map<String, dynamic>.from(q)));
+              } catch (e) {
+                print('Error parsing question from list: $e');
               }
-              parsedQuestions.add(QuestionModel.fromMap(questionMap));
-            } catch (e) {
-              print('Skipping invalid question ($key): $e');
             }
           }
-        });
+        } else if (questionsData is Map) {
+          questionsData.forEach((key, value) {
+            if (value != null && value is Map) {
+              try {
+                final questionMap = Map<String, dynamic>.from(value);
+                // Ensure ID is present
+                if (questionMap['id'] == null || questionMap['id'].toString().isEmpty) {
+                  questionMap['id'] = key.toString();
+                }
+                parsedQuestions.add(QuestionModel.fromMap(questionMap));
+              } catch (e) {
+                 print('Error parsing question from map ($key): $e');
+              }
+            }
+          });
+        }
+      } catch (e) {
+        print('Error processing questions structure: $e');
       }
     }
 
@@ -164,6 +198,8 @@ class SurveyForm {
       questions: parsedQuestions,
       createdAt: _parseDateTime(map['createdAt']),
       creatorId: map['creatorId']?.toString(),
+      taxRate: (map['taxRate'] is num) ? (map['taxRate'] as num).toDouble() : null,
+      serviceChargeRate: (map['serviceChargeRate'] is num) ? (map['serviceChargeRate'] as num).toDouble() : null,
     );
   }
 

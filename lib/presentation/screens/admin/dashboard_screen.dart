@@ -31,7 +31,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    // Listen for auth changes to load data once auth is ready
+    context.read<AuthProvider>().addListener(_onAuthChanged);
+    // Initial load attempt
     _loadDashboardData();
+  }
+
+  @override
+  void dispose() {
+    // Remove listener to prevent memory leaks
+    context.read<AuthProvider>().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  /// Called when AuthProvider state changes
+  void _onAuthChanged() {
+    if (!mounted) return;
+    final authProvider = context.read<AuthProvider>();
+    
+    // If auth just finished loading and we have a user, load the data
+    if (!authProvider.isLoading && authProvider.user != null) {
+      // Only load if we haven't successfully loaded recently (optional optimization)
+      if (!_hasError) { // Simple check, could be more robust
+         _loadDashboardData();
+      }
+    }
   }
 
   /// Loads all dashboard data with comprehensive error handling
@@ -193,16 +217,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       
-      body: Selector<FeedbackProvider, bool>(
-        selector: (_, provider) => provider.isLoading,
-        builder: (context, isLoading, child) {
+      body: Selector<FeedbackProvider, _DashboardLoadingState>(
+        selector: (_, provider) => _DashboardLoadingState(
+          isLoading: provider.isLoading,
+          isEmpty: provider.feedbackList.isEmpty,
+        ),
+        builder: (context, state, child) {
           // Show loading on first load only (prevents flickering on refresh)
-          if (isLoading && context.read<FeedbackProvider>().feedbackList.isEmpty) {
+          if (state.isLoading && state.isEmpty) {
             return const LoadingWidget(message: 'Loading dashboard...');
           }
 
           // Show error state if data loading failed
-          if (_hasError && context.read<FeedbackProvider>().feedbackList.isEmpty) {
+          if (_hasError && state.isEmpty) {
             return _buildErrorState();
           }
 
@@ -454,7 +481,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _buildFilterText(provider),
+                    _buildFilterText(filters),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -478,21 +505,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Builds human readable filter description text
-  String _buildFilterText(FeedbackProvider provider) {
+  String _buildFilterText(FilterData filters) {
     final parts = <String>[];
     
-    if (provider.selectedMinRating != null || provider.selectedMaxRating != null) {
-      final min = provider.selectedMinRating ?? 1;
-      final max = provider.selectedMaxRating ?? 5;
+    if (filters.selectedMinRating != null || filters.selectedMaxRating != null) {
+      final min = filters.selectedMinRating ?? 1;
+      final max = filters.selectedMaxRating ?? 5;
       parts.add('Rating: $min-$max ⭐');
     }
     
-    if (provider.startDate != null || provider.endDate != null) {
-      final start = provider.startDate != null
-          ? DateFormat('MMM d').format(provider.startDate!)
+    if (filters.startDate != null || filters.endDate != null) {
+      final start = filters.startDate != null
+          ? DateFormat('MMM d').format(filters.startDate!)
           : 'Start';
-      final end = provider.endDate != null
-          ? DateFormat('MMM d').format(provider.endDate!)
+      final end = filters.endDate != null
+          ? DateFormat('MMM d').format(filters.endDate!)
           : 'End';
       parts.add('Date: $start - $end');
     }
@@ -649,6 +676,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: Colors.grey[700]!,
               ),
               _BottomNavButton(
+                icon: Icons.restaurant_menu,
+                label: 'Menu',
+                onPressed: () => context.push('/menu'),
+                color: Colors.grey[700]!,
+              ),
+              _BottomNavButton(
                 icon: Icons.qr_code_2,
                 label: 'Show QR',
                 onPressed: () => _showQrCodeDialog(context),
@@ -720,9 +753,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String baseUrl;
     if (kIsWeb) {
       final uri = Uri.base;
-      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/public';
     } else {
-      baseUrl = 'https://feedy-cebf6.web.app/#/survey'; 
+      baseUrl = 'https://feedy-cebf6.web.app/#/public'; 
     }
 
     // Get current user details
@@ -779,6 +812,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       : 'ID: $ownerId',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
+              const SizedBox(height: 8),
+              // Debug: Show URL
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  qrData,
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -795,80 +842,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+
 /// Stat card widget showing metric with icon and gradient
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
-  final String subtitle;
+  final String? subtitle;
 
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
-    required this.subtitle,
+    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
-    final gradientColors = icon == Icons.feedback
-        ? [Colors.blue.shade50, Colors.white]
-        : [Colors.amber.shade50, Colors.white];
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: gradientColors,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    return Card(
+      elevation: 2,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, color.withOpacity(0.05)],
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(icon, color: color, size: 28),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: color,
+                Icon(icon, color: color, size: 20),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
             Text(
-              title,
+              value,
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
+                fontSize: 24, 
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
               ),
             ),
-            const SizedBox(height: 2),
             Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[500],
-              ),
+              title,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -877,7 +907,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// Quick action card for navigation buttons
+/// Quick action card for navigation
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -893,40 +923,39 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
                 ),
-                overflow: TextOverflow.ellipsis,
+                child: Icon(icon, color: color, size: 28),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Bottom navigation button with icon and label
+/// Bottom navigation button widget
 class _BottomNavButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -944,20 +973,20 @@ class _BottomNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.all(8.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 28, color: color),
+            Icon(icon, color: color, size: 24),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+                fontSize: 12,
                 color: color,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -965,4 +994,21 @@ class _BottomNavButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Helper class to combine loading state for selector
+class _DashboardLoadingState {
+  final bool isLoading;
+  final bool isEmpty;
+  
+  _DashboardLoadingState({required this.isLoading, required this.isEmpty});
+  
+  @override
+  bool operator ==(Object other) => 
+    other is _DashboardLoadingState && 
+    other.isLoading == isLoading && 
+    other.isEmpty == isEmpty;
+  
+  @override
+  int get hashCode => Object.hash(isLoading, isEmpty);
 }

@@ -242,7 +242,7 @@ class MockDatabaseImpl implements BaseDatabase {
         final responseJson = jsonEncode({
             'answers': answers,
             'submittedAt': DateTime.now().toIso8601String(),
-            'ownerId': ownerId,
+            'owner_id': ownerId,
         });
         existingResponses.add(responseJson);
         await prefs.setStringList('survey_responses', existingResponses);
@@ -258,8 +258,17 @@ class MockDatabaseImpl implements BaseDatabase {
       final prefs = await SharedPreferences.getInstance();
       final responses = prefs.getStringList('survey_responses') ?? [];
       var allResponses = responses.map((r) => Map<String, dynamic>.from(jsonDecode(r))).toList();
+      
+      // Backwards compatibility: normalize ownerId to owner_id
+      for (var response in allResponses) {
+        if (response.containsKey('ownerId') && !response.containsKey('owner_id')) {
+          response['owner_id'] = response['ownerId'];
+          response.remove('ownerId');
+        }
+      }
+      
       if (ownerId != null) {
-        allResponses = allResponses.where((r) => r['ownerId'] == ownerId).toList();
+        allResponses = allResponses.where((r) => r['owner_id'] == ownerId).toList();
       }
       return allResponses;
     } catch (e) {

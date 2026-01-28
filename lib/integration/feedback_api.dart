@@ -110,8 +110,8 @@ class FeedbackAPI {
       'rating': f.rating,
       'comments': f.comments,
       'createdAt': f.createdAt.toIso8601String(),
-      'ownerId': f.ownerId,
-      'surveyId': f.surveyId,
+      'owner_id': f.ownerId,
+      'survey_id': f.surveyId,
     }).toList();
   }
 

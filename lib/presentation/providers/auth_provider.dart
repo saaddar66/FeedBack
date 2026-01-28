@@ -57,7 +57,7 @@ class AuthProvider with ChangeNotifier {
         // Fallback if profile missing: create minimal model from Auth data
         _currentUser = UserModel(
           id: firebaseUser.uid,
-          name: firebaseUser.displayName ?? 'Admin',
+          name: firebaseUser.displayName ?? 'User',
           email: firebaseUser.email ?? '',
           phone: '',
           businessName: '',
@@ -148,8 +148,12 @@ class AuthProvider with ChangeNotifier {
 
       // 4. Save to Realtime Database
       await DatabaseHelper.instance.createUserProfile(newUser);
+
+      // 5. Update local state immediately to avoid race conditions or default display names
+      _currentUser = newUser;
+      notifyListeners();
       
-      // Listener will handle loading
+      // Listener will also fire, but our local state is now correct proactively
     } on FirebaseAuthException catch (e) {
       throw e.message ?? 'Signup failed';
     }

@@ -461,7 +461,7 @@ class PDFExporter {
         } else {
           // Extract answer fields from root (backwards compatibility)
           answers = <String, dynamic>{};
-          final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+          final metadataFields = {'id', 'submittedAt', 'owner_id', 'ownerId', 'userName', 'userEmail', 'answers'};
           response.forEach((key, value) {
             if (!metadataFields.contains(key)) {
               answers[key.toString()] = value;

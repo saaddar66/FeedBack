@@ -12,6 +12,7 @@ import 'package:feedy/domain/use_cases/submit_feedback_use_case.dart';
 import 'package:feedy/presentation/providers/feedback_provider.dart';
 import 'package:feedy/presentation/providers/public_submission_provider.dart';
 import 'package:feedy/presentation/providers/auth_provider.dart';
+import 'package:feedy/presentation/providers/menu_provider.dart';
 import 'package:feedy/presentation/screens/welcome_screen.dart';
 import 'package:feedy/presentation/screens/signup_screen.dart';
 import 'package:feedy/presentation/screens/forgot_password_screen.dart';
@@ -23,12 +24,17 @@ import 'package:feedy/presentation/screens/admin/survey_list_screen.dart';
 import 'package:feedy/presentation/screens/admin/settings_screen.dart';
 import 'package:feedy/presentation/screens/admin/feedback_list_screen.dart';
 import 'package:feedy/presentation/screens/admin/survey_response_list_screen.dart';
+import 'package:feedy/presentation/screens/admin/menu_list_screen.dart';
+import 'package:feedy/presentation/screens/admin/menu_editor_screen.dart';
+import 'package:feedy/core/routes/route_paths.dart';
 // Public screens
 import 'package:feedy/presentation/screens/public/feedback_form_screen.dart';
 import 'package:feedy/presentation/screens/public/survey_screen.dart';
 import 'package:feedy/presentation/screens/public/qr_feedback_web_screen.dart';
+import 'package:feedy/presentation/screens/public/public_landing_screen.dart';
+import 'package:feedy/presentation/screens/public/public_menu_viewer_screen.dart';
 import 'package:feedy/presentation/screens/public/thank_you_screen.dart';
-import 'package:feedy/data/database/firebase_database_impl.dart';
+import 'package:feedy/data/database/firestore_database_impl.dart';
 import 'package:feedy/data/database/mock_database_impl.dart';
 import 'package:feedy/data/database/base_database.dart';
 import 'dart:ui';
@@ -46,11 +52,11 @@ void main() async {
   // Load environment variables for secure key management
   await dotenv.load(fileName: ".env");
 
-  // Initialize database factory
+  // Initialize database factory - NOW USING FIRESTORE
   final useMock = dotenv.env['USE_MOCK_DB'] == 'true';
-  developer.log('Database Mode: ${useMock ? "MOCK" : "FIREBASE"}', name: 'Main');
+  developer.log('Database Mode: ${useMock ? "MOCK" : "FIRESTORE"}', name: 'Main');
   
-  final BaseDatabase database = useMock ? MockDatabaseImpl() : FirebaseDatabaseImpl();
+  final BaseDatabase database = useMock ? MockDatabaseImpl() : FirestoreDatabaseImpl();
   DatabaseHelper.instance.configure(database);
   
   // Initialize Firebase (and Crashlytics)
@@ -111,70 +117,91 @@ class MyApp extends StatelessWidget {
     // Create router configuration with URL-based routes
     final router = GoRouter(
       initialLocation: '/', // Welcome screen as entry point
+      debugLogDiagnostics: true, // Enable debug logging for route matching
       routes: [
         // Initial route - Welcome screen
         GoRoute(
-          path: '/',
+          path: RoutePaths.welcome,
           builder: (context, state) => const WelcomeScreen(),
         ),
         // Auth flow
         GoRoute(
-          path: '/login',
+          path: RoutePaths.login,
           builder: (context, state) => const LoginScreen(),
         ),
         GoRoute(
-          path: '/signup',
+          path: RoutePaths.signup,
           builder: (context, state) => const SignupScreen(),
         ),
         GoRoute(
-          path: '/forgot-password',
+          path: RoutePaths.forgotPassword,
           builder: (context, state) => const ForgotPasswordScreen(),
         ),
         // Admin flow
         GoRoute(
-          path: '/dashboard',
+          path: RoutePaths.dashboard,
           builder: (context, state) => const DashboardScreen(),
         ),
         GoRoute(
-          path: '/config',
+          path: RoutePaths.config,
           builder: (context, state) => const SurveyListScreen(),
           routes: [
             GoRoute(
-              path: 'edit',
+              path: RoutePaths.configEdit,
               builder: (context, state) => const ConfigurationScreen(),
             ),
           ],
         ),
         GoRoute(
-          path: '/settings',
+          path: RoutePaths.menu,
+          builder: (context, state) => const MenuListScreen(),
+          routes: [
+            GoRoute(
+              path: 'edit',
+              builder: (context, state) => const MenuEditorScreen(),
+            ),
+          ],
+        ),
+        GoRoute(
+          path: RoutePaths.settings,
           builder: (context, state) => const SettingsScreen(),
         ),
         // Result views (Admin)
         GoRoute(
-          path: '/feedback-results',
+          path: RoutePaths.feedbackResults,
           builder: (context, state) => const FeedbackListScreen(),
         ),
         GoRoute(
-          path: '/survey-results',
+          path: RoutePaths.surveyResults,
           builder: (context, state) => const SurveyResponseListScreen(),
         ),
         // Public flow
         GoRoute(
-          path: '/feedback',
+          path: RoutePaths.feedback,
           builder: (context, state) => const FeedbackFormScreen(),
         ),
         GoRoute(
-          path: '/survey',
+          path: RoutePaths.survey,
           builder: (context, state) => const SurveyScreen(),
         ),
         // QR code web form
         GoRoute(
-          path: '/qr-feedback',
+          path: RoutePaths.qrFeedback,
           builder: (context, state) => const QrFeedbackWebScreen(),
+        ),
+        // Public landing page (QR code entry point)
+        GoRoute(
+          path: RoutePaths.publicLanding,
+          builder: (context, state) => const PublicLandingScreen(),
+        ),
+        // Public menu viewer
+        GoRoute(
+          path: RoutePaths.publicMenu,
+          builder: (context, state) => const PublicMenuViewerScreen(),
         ),
         // Thank you page
         GoRoute(
-          path: '/thank-you',
+          path: RoutePaths.thankYou,
           builder: (context, state) => const ThankYouScreen(),
         ),
       ],
@@ -190,6 +217,10 @@ class MyApp extends StatelessWidget {
         // Admin provider (full access)
         ChangeNotifierProvider(
           create: (_) => FeedbackProvider(feedbackRepository),
+        ),
+        // Menu provider (menu management)
+        ChangeNotifierProvider(
+          create: (_) => MenuProvider(),
         ),
         // Public provider (submission only)
         ChangeNotifierProvider(

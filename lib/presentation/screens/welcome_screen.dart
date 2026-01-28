@@ -39,7 +39,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   String? _getOwnerId(BuildContext context) {
     String? ownerId;
     try {
-      final authProvider = context.read<AuthProvider>();
+      final authProvider = context.watch<AuthProvider>();
       ownerId = authProvider.user?.id;
     } catch (e) {
       // If provider not available, fall back to last active user
@@ -51,7 +51,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   String? _getBusinessName(BuildContext context) {
     String? businessName;
     try {
-      final authProvider = context.read<AuthProvider>();
+      final authProvider = context.watch<AuthProvider>();
       businessName = authProvider.user?.businessName;
     } catch (e) {
       // If provider not available, fall back to last active user
@@ -65,12 +65,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   String _getQrCodeUrl(BuildContext context) {
     String baseUrl;
     if (kIsWeb) {
-      // For web, use the current origin + /#/survey route
+      // For web, use the current origin + /#/public route
       final uri = Uri.base;
-      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/public';
     } else {
-      // For mobile/desktop, point to the hosted web app's survey route
-      baseUrl = 'https://feedy-cebf6.web.app/#/survey'; 
+      // For mobile/desktop, point to the hosted web app's public route
+      baseUrl = 'https://feedy-cebf6.web.app/#/public'; 
     }
 
     final ownerId = _getOwnerId(context);
@@ -243,20 +243,35 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
               ),
               // Admin Login button at top right
+              // Admin Login/Dashboard button at top right
               Positioned(
                 top: 0,
                 right: 0,
-                child: IconButton(
-                  onPressed: () => context.go('/login'),
-                  icon: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.shield_outlined, color: Colors.blue),
-                      SizedBox(width: 4),
-                      Icon(Icons.person_outline, color: Colors.blue),
-                    ],
-                  ),
-                  tooltip: 'Admin Login',
+                child: Consumer<AuthProvider>(
+                  builder: (context, auth, _) {
+                    final isLoggedIn = auth.user != null;
+                    return IconButton(
+                      onPressed: () {
+                         if (isLoggedIn) {
+                           context.go('/dashboard');
+                         } else {
+                           context.go('/login');
+                         }
+                      },
+                      icon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isLoggedIn ? Icons.dashboard_outlined : Icons.shield_outlined, 
+                            color: Colors.blue
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.person_outline, color: Colors.blue),
+                        ],
+                      ),
+                      tooltip: isLoggedIn ? 'Go to Dashboard' : 'Admin Login',
+                    );
+                  },
                 ),
               ),
             ],

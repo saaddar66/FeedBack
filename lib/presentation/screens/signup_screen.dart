@@ -186,9 +186,9 @@ class SignupScreen extends StatelessWidget {
                         onPressed: isLoading
                             ? null
                             : () async {
-                                // Validate form
-                                if (formKey.currentState!.validate()) {
-                                  // Set loading state
+                                final isValid = formKey.currentState!.validate();
+                                if (isValid) {
+                                  // Set loading state IMMEDIATELY to disable button
                                   setState(() => isLoading = true);
                                   
                                   try {
@@ -213,12 +213,12 @@ class SignupScreen extends StatelessWidget {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(content: Text('Error: $e')),
                                       );
+                                      // Only reset loading on error so they can try again.
+                                      // On success, we navigate away, so no need to reset.
+                                      setState(() => isLoading = false); 
                                     }
-                                  } finally {
-                                    if (context.mounted) {
-                                      setState(() => isLoading = false);
-                                    }
-                                  }
+                                  } 
+                                  // No finally block needed for reset if we handle success navigation
                                 }
                               },
                         style: ElevatedButton.styleFrom(

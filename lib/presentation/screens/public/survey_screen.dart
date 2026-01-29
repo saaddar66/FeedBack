@@ -47,7 +47,20 @@ class _SurveyScreenState extends State<SurveyScreen> {
         title: const Text('Survey'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              // If opened directly via deep link, go to public landing
+              final state = GoRouterState.of(context);
+              final String? uid = state.uri.queryParameters['uid'];
+              if (uid != null && uid.isNotEmpty) {
+                context.go('/public?uid=$uid');
+              } else {
+                context.go('/public');
+              }
+            }
+          },
         ),
       ),
       body: SingleChildScrollView(

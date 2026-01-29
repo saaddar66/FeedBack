@@ -298,6 +298,10 @@ class FirestoreDatabaseImpl implements BaseDatabase {
 
   @override
   Future<SurveyForm?> getActiveSurvey({String? creatorId}) async {
+    await _ensureInitialized();
+    
+    // We fetch all surveys (or filtered by creator) and find the active one in memory
+    // This avoids needing a composite index on [creatorId, isActive]
     final surveys = await getAllSurveys(creatorId: creatorId);
     
     try {

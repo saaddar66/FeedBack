@@ -31,83 +31,85 @@ class PublicLandingScreen extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 600),
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Logo/Icon
-                    Icon(
-                      Icons.restaurant,
-                      size: 80,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // Welcome message
-                    const Text(
-                      'Welcome!',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Logo/Icon
+                      Icon(
+                        Icons.restaurant,
+                        size: 80,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    Text(
-                      'What would you like to do today?',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[700],
+                      const SizedBox(height: 24),
+                      
+                      // Welcome message
+                      const Text(
+                        'Welcome!',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 48),
-                    
-                    // View Menu Button
-                    _ActionCard(
-                      icon: Icons.restaurant_menu,
-                      title: 'View Menu',
-                      description: 'Browse our delicious offerings',
-                      color: Colors.orange,
-                      onTap: () {
-                        // Navigate to public menu with ownerId
-                        final route = ownerId != null && ownerId.isNotEmpty
-                            ? '/public/menu?uid=$ownerId'
-                            : '/public/menu';
-                        context.go(route);
-                      },
-                    ),
-                    
-                    const SizedBox(height: 20),
-                    
-                    // Leave Feedback Button
-                    _ActionCard(
-                      icon: Icons.rate_review,
-                      title: 'Leave Feedback',
-                      description: 'Share your experience with us',
-                      color: Colors.blue,
-                      onTap: () {
-                        // Navigate to survey with ownerId
-                        final route = ownerId != null && ownerId.isNotEmpty
-                            ? '/survey?uid=$ownerId'
-                            : '/survey';
-                        context.go(route);
-                      },
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Footer text
-                    Text(
-                      'Scan the QR code to access this page anytime',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
+                      const SizedBox(height: 12),
+                      
+                      Text(
+                        'What would you like to do today?',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[700],
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 48),
+                      
+                      // View Menu Button
+                      _ActionCard(
+                        icon: Icons.restaurant_menu,
+                        title: 'View Menu',
+                        description: 'Browse our delicious offerings',
+                        color: Colors.orange,
+                        onTap: () {
+                          // Navigate to public menu with ownerId
+                          final route = ownerId != null && ownerId.isNotEmpty
+                              ? '/public/menu?uid=$ownerId'
+                              : '/public/menu';
+                          context.go(route);
+                        },
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // Leave Feedback Button
+                      _ActionCard(
+                        icon: Icons.rate_review,
+                        title: 'Leave Feedback',
+                        description: 'Share your experience with us',
+                        color: Colors.blue,
+                        onTap: () {
+                          // Navigate to survey with ownerId
+                          final route = ownerId != null && ownerId.isNotEmpty
+                              ? '/survey?uid=$ownerId'
+                              : '/survey';
+                          context.go(route);
+                        },
+                      ),
+                      
+                      const SizedBox(height: 32),
+                      
+                      // Footer text
+                      Text(
+                        'Scan the QR code to access this page anytime',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

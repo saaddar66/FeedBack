@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:developer' as developer;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
-import 'package:feedy/config/database_config.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -35,7 +34,6 @@ import 'package:feedy/presentation/screens/public/public_landing_screen.dart';
 import 'package:feedy/presentation/screens/public/public_menu_viewer_screen.dart';
 import 'package:feedy/presentation/screens/public/thank_you_screen.dart';
 import 'package:feedy/data/database/firestore_database_impl.dart';
-import 'package:feedy/data/database/mock_database_impl.dart';
 import 'package:feedy/data/database/base_database.dart';
 import 'dart:ui';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -43,117 +41,124 @@ import 'firebase_options.dart';
 
 
 
+import 'package:feedy/presentation/screens/splash_screen.dart';
+
 /// Main entry point of the application
-/// Initializes Firebase and sets up the app with Provider for state management
-void main() async {
-  // Ensure Flutter bindings are initialized before async operations
+void main() {
+  // Ensure Flutter bindings are initialized before any widgets
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Load environment variables for secure key management
-  await dotenv.load(fileName: ".env");
-
-  // Initialize database factory - NOW USING FIRESTORE
-  final useMock = dotenv.env['USE_MOCK_DB'] == 'true';
-  developer.log('Database Mode: ${useMock ? "MOCK" : "FIRESTORE"}', name: 'Main');
-  
-  final BaseDatabase database = useMock ? MockDatabaseImpl() : FirestoreDatabaseImpl();
-  DatabaseHelper.instance.configure(database);
-  
-  // Initialize Firebase (and Crashlytics)
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    
-    // Enable Crashlytics collection
-    // Pass all uncaught "fatal" errors from the framework to Crashlytics
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-
-    // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
-
-  } catch (e) {
-    developer.log('Firebase initialization failed: $e', error: e);
-    // Continue anyway, DatabaseHelper generally handles offline/mock
-  }
-
-  // Initialize the database singleton AFTER Firebase is initialized
-  await DatabaseHelper.instance.init();
-  
-  final databaseHelper = DatabaseHelper.instance;
-  // Note: We removed explicit "Mock Mode" fallback for production. 
-  // It will now try to use Firebase Offline persistence.
-  
-  // Create repository instance that will handle all data operations and abstraction
-  final feedbackRepository = FeedbackRepository(databaseHelper);
-  
-  // Initialize use cases for dependency injection into providers
-  final submitFeedbackUseCase = SubmitFeedbackUseCase(feedbackRepository);
-  
-  // Start the Flutter app with necessary dependencies injected
-  runApp(MyApp(
-    feedbackRepository: feedbackRepository,
-    submitFeedbackUseCase: submitFeedbackUseCase,
-  ));
+  runApp(const MyApp());
 }
 
-/// Root widget of the application
-/// Sets up the MaterialApp with theme, Provider for state management, and GoRouter for navigation
-class MyApp extends StatelessWidget {
-  final FeedbackRepository feedbackRepository;
-  final SubmitFeedbackUseCase submitFeedbackUseCase;
-
-  const MyApp({
-    super.key,
-    required this.feedbackRepository,
-    required this.submitFeedbackUseCase,
-  });
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Create router configuration with URL-based routes
-    final router = GoRouter(
-      initialLocation: '/', // Welcome screen as entry point
-      debugLogDiagnostics: true, // Enable debug logging for route matching
-      routes: [
-        // Initial route - Welcome screen
-        GoRoute(
-          path: RoutePaths.welcome,
-          builder: (context, state) => const WelcomeScreen(),
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late final GoRouter _router;
+  
+  // Dependencies
+  late FeedbackRepository _feedbackRepository;
+  late SubmitFeedbackUseCase _submitFeedbackUseCase;
+  
+  // State
+  bool _isInitialized = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Initialize dependencies immediately (sync) so providers can be built
+    // The actual DB init happens async in _initializeApp
+    final databaseHelper = DatabaseHelper.instance;
+    _feedbackRepository = FeedbackRepository(databaseHelper);
+    _submitFeedbackUseCase = SubmitFeedbackUseCase(_feedbackRepository);
+
+    _router = GoRouter(
+      debugLogDiagnostics: true,
+
+      errorBuilder: (context, state) => Scaffold(
+        body: Center(
+          child: Text('Page not found: ${state.uri.path}'),
         ),
+      ),
+      
+      routes: [
+        // Public routes (Prioritized)
+        GoRoute(
+          path: '/public',
+          name: 'public_landing',
+          builder: (context, state) {
+            developer.log('Building PublicLandingScreen for path: ${state.uri.path}', name: 'Router');
+            return const PublicLandingScreen();
+          },
+        ),
+        GoRoute(
+          path: '/public/menu',
+          name: 'public_menu',
+          builder: (context, state) => const PublicMenuViewerScreen(),
+        ),
+        
+        // Root / Welcome
+        GoRoute(
+          path: '/',
+          name: 'welcome',
+          builder: (context, state) {
+            developer.log('Building WelcomeScreen for path: ${state.uri.path}', name: 'Router');
+            return const WelcomeScreen();
+          },
+          redirect: (context, state) {
+            final uid = state.uri.queryParameters['uid'];
+            if (uid != null && uid.isNotEmpty) {
+               developer.log('Redirecting / to /public because UID found', name: 'Router');
+               return '/public?uid=$uid';
+            }
+            return null;
+          },
+        ),
+
         // Auth flow
         GoRoute(
-          path: RoutePaths.login,
+          path: '/login',
           builder: (context, state) => const LoginScreen(),
         ),
         GoRoute(
-          path: RoutePaths.signup,
+          path: '/signup',
           builder: (context, state) => const SignupScreen(),
         ),
         GoRoute(
-          path: RoutePaths.forgotPassword,
+          path: '/forgot-password',
           builder: (context, state) => const ForgotPasswordScreen(),
         ),
+
         // Admin flow
         GoRoute(
-          path: RoutePaths.dashboard,
+          path: '/dashboard',
           builder: (context, state) => const DashboardScreen(),
         ),
         GoRoute(
-          path: RoutePaths.config,
+          path: '/config',
           builder: (context, state) => const SurveyListScreen(),
           routes: [
             GoRoute(
-              path: RoutePaths.configEdit,
+              path: 'edit',
               builder: (context, state) => const ConfigurationScreen(),
             ),
           ],
         ),
         GoRoute(
-          path: RoutePaths.menu,
+          path: '/menu',
+          redirect: (context, state) {
+            final uid = state.uri.queryParameters['uid'];
+            if (uid != null && uid.isNotEmpty) {
+              return '/public/menu?uid=$uid';
+            }
+            return null;
+          },
           builder: (context, state) => const MenuListScreen(),
           routes: [
             GoRoute(
@@ -163,72 +168,89 @@ class MyApp extends StatelessWidget {
           ],
         ),
         GoRoute(
-          path: RoutePaths.settings,
+          path: '/settings',
           builder: (context, state) => const SettingsScreen(),
         ),
-        // Result views (Admin)
+
+        // Result views
         GoRoute(
-          path: RoutePaths.feedbackResults,
+          path: '/feedback-results',
           builder: (context, state) => const FeedbackListScreen(),
         ),
         GoRoute(
-          path: RoutePaths.surveyResults,
+          path: '/survey-results',
           builder: (context, state) => const SurveyResponseListScreen(),
         ),
-        // Public flow
+
+        // Other Public flow
         GoRoute(
-          path: RoutePaths.feedback,
+          path: '/feedback',
           builder: (context, state) => const FeedbackFormScreen(),
         ),
         GoRoute(
-          path: RoutePaths.survey,
+          path: '/survey',
           builder: (context, state) => const SurveyScreen(),
         ),
-        // QR code web form
         GoRoute(
-          path: RoutePaths.qrFeedback,
+          path: '/qr-feedback',
           builder: (context, state) => const QrFeedbackWebScreen(),
         ),
-        // Public landing page (QR code entry point)
         GoRoute(
-          path: RoutePaths.publicLanding,
-          builder: (context, state) => const PublicLandingScreen(),
-        ),
-        // Public menu viewer
-        GoRoute(
-          path: RoutePaths.publicMenu,
-          builder: (context, state) => const PublicMenuViewerScreen(),
-        ),
-        // Thank you page
-        GoRoute(
-          path: RoutePaths.thankYou,
+          path: '/thank-you',
           builder: (context, state) => const ThankYouScreen(),
         ),
       ],
     );
 
-    // Provide providers to the widget tree using MultiProvider
+    // Start async init
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      await dotenv.load(fileName: ".env");
+
+      final BaseDatabase database = FirestoreDatabaseImpl();
+      DatabaseHelper.instance.configure(database);
+
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+
+      await DatabaseHelper.instance.init();
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      developer.log('Initialization failed', error: e);
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Auth provider (session management)
-        ChangeNotifierProvider(
-          create: (_) => AuthProvider(),
-        ),
-        // Admin provider (full access)
-        ChangeNotifierProvider(
-          create: (_) => FeedbackProvider(feedbackRepository),
-        ),
-        // Menu provider (menu management)
-        ChangeNotifierProvider(
-          create: (_) => MenuProvider(),
-        ),
-        // Public provider (submission only)
-        ChangeNotifierProvider(
-          create: (_) => PublicSubmissionProvider(submitFeedbackUseCase),
-        ),
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => FeedbackProvider(_feedbackRepository)),
+        ChangeNotifierProvider(create: (_) => MenuProvider()),
+        ChangeNotifierProvider(create: (_) => PublicSubmissionProvider(_submitFeedbackUseCase)),
       ],
       child: MaterialApp.router(
-        title: 'Feedy - Feedback Collection',
+        title: 'Feedy',
         theme: ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
@@ -267,7 +289,34 @@ class MyApp extends StatelessWidget {
             ),
           ),
         ),
-        routerConfig: router,
+        routerConfig: _router,
+        builder: (context, child) {
+          if (_error != null) {
+            return Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text('Failed to start app', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600])),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+
+          if (!_isInitialized) {
+            return const SplashScreen();
+          }
+
+          return child!;
+        },
         debugShowCheckedModeBanner: false,
       ),
     );

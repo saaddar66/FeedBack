@@ -33,8 +33,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     // Listen for auth changes to load data once auth is ready
     context.read<AuthProvider>().addListener(_onAuthChanged);
-    // Initial load attempt
-    _loadDashboardData();
+    // Initial load attempt - deferred to next frame to avoid 'setState during build' error
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDashboardData();
+    });
   }
 
   @override
@@ -778,63 +780,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Scan to Give Feedback',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
-              QrImageView(
-                data: qrData,
-                version: QrVersions.auto,
-                size: qrSize,
-                backgroundColor: Colors.white,
-              ),
-              const SizedBox(height: 16),
-              if (businessName != null && businessName.isNotEmpty)
-                Text(
-                  'Linked to: $businessName',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.blueGrey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Scan to Give Feedback',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                )
-              else if (ownerId != null)
-                Text(
-                   ownerId.length > 4 
-                      ? 'ID: ${ownerId.substring(0, 4)}...'
-                      : 'ID: $ownerId',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-              const SizedBox(height: 8),
-              // Debug: Show URL
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
+                const SizedBox(height: 24),
+                QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: qrSize,
+                  backgroundColor: Colors.white,
                 ),
-                child: SelectableText(
-                  qrData,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  textAlign: TextAlign.center,
+                const SizedBox(height: 16),
+                if (businessName != null && businessName.isNotEmpty)
+                  Text(
+                    'Linked to: $businessName',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.blueGrey,
+                    ),
+                  )
+                else if (ownerId != null)
+                  Text(
+                     ownerId.length > 4 
+                        ? 'ID: ${ownerId.substring(0, 4)}...'
+                        : 'ID: $ownerId',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                const SizedBox(height: 8),
+                // Debug: Show URL
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    qrData,
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Close'),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Close'),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -327,13 +327,24 @@
       Object.entries(data.questions).forEach(([qid, qData]) => {
         if (!qData || (typeof qData === 'object' && qData.value === false) || qData === false) return;
 
-        const q = typeof qData === 'object' ? qData : { text: qid, type: 'text' };
+        // Determine question object structure
+        let q;
+        if (typeof qData === 'object') {
+          q = qData;
+        } else if (typeof qData === 'string') {
+          // Handle simple array of strings: ["Question 1", "Question 2"]
+          q = { text: qData, type: 'text' };
+        } else {
+          // Handle boolean flags: {"Question 1": true}
+          q = { text: qid, type: 'text' };
+        }
         const wrapper = document.createElement('div');
         wrapper.className = 'space-y-2';
 
         const label = document.createElement('label');
         label.className = 'block font-bold text-gray-700';
-        label.textContent = q.text || q.question || qid;
+        // Support multiple naming conventions: title (Flutter), text/question (Legacy/JS)
+        label.textContent = q.title || q.text || q.question || qid;
         wrapper.appendChild(label);
 
         // Input based on type

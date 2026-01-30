@@ -25,6 +25,7 @@ import 'package:feedy/presentation/screens/admin/feedback_list_screen.dart';
 import 'package:feedy/presentation/screens/admin/survey_response_list_screen.dart';
 import 'package:feedy/presentation/screens/admin/menu_list_screen.dart';
 import 'package:feedy/presentation/screens/admin/menu_editor_screen.dart';
+import 'package:feedy/presentation/screens/admin/order_views.dart';
 import 'package:feedy/core/routes/route_paths.dart';
 // Public screens
 import 'package:feedy/presentation/screens/public/feedback_form_screen.dart';
@@ -139,6 +140,10 @@ class _MyAppState extends State<MyApp> {
         GoRoute(
           path: '/dashboard',
           builder: (context, state) => const DashboardScreen(),
+        ),
+        GoRoute(
+          path: '/orders',
+          builder: (context, state) => const OrderListScreen(),
         ),
         GoRoute(
           path: '/config',

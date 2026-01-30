@@ -57,7 +57,7 @@ class _PublicMenuViewerScreenState extends State<PublicMenuViewerScreen> {
       }
       
       // Filter isActive in memory to avoid composite index usage
-      // query = query.where('isActive', isEqualTo: true);
+      query = query.where('isActive', isEqualTo: true);
       
       final snapshot = await query.get();
       

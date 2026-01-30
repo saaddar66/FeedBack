@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Feedy - Order Food</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-emerald-600 text-white p-4 sticky top-0 z-30 shadow-md">
+        <div class="max-w-2xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <button id="backBtn" class="p-1 hover:bg-emerald-700 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                </button>
+                <h1 class="text-xl font-bold">Our Menu</h1>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-2xl mx-auto p-4 pb-24 min-h-[500px] relative">
+
+        <!-- Loading -->
+        <div id="loading" class="absolute inset-0 flex flex-col items-center justify-start pt-20 bg-gray-100 z-20">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600"></div>
+            <p class="mt-4 text-gray-500">Loading menu...</p>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="hidden bg-red-50 p-4 rounded-lg text-red-700 text-center mx-4 mt-8">
+            <p id="errorMsg">Failed to load menu.</p>
+        </div>
+
+        <!-- Menu Content -->
+        <div id="menuContent" class="space-y-8"></div>
+        <div id="emptyMsg" class="hidden text-center text-gray-500 mt-10 italic">No menu items available.</div>
+
+    </main>
+
+    <!-- Cart Bar -->
+    <div id="cartBar"
+        class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 hidden z-40 shadow-lg transform transition-transform">
+        <div class="max-w-2xl mx-auto flex justify-between items-center">
+            <div>
+                <p class="text-xs text-gray-500">Total</p>
+                <p class="text-xl font-bold text-gray-800" id="cartTotal">$0.00</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-full"><span
+                        id="cartCount">0</span> items</span>
+                <button id="checkoutBtn"
+                    class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-lg transition">
+                    Checkout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div id="checkoutModal"
+        class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-fade-in-up">
+            <h3 class="text-xl font-bold mb-2">Confirm Order</h3>
+            <p class="text-gray-600 text-sm mb-6">Enter your table number to send this order to the kitchen.</p>
+
+            <div class="mb-6">
+                <label class="block text-sm font-bold text-gray-700 mb-1">Table Number</label>
+                <input type="number" id="tableInput"
+                    class="w-full border-2 border-gray-200 rounded-lg p-3 focus:outline-none focus:border-emerald-500 transition text-lg"
+                    placeholder="e.g. 5" autofocus>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="cancelCheckout"
+                    class="flex-1 py-3 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition">Cancel</button>
+                <button id="confirmCheckout"
+                    class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-md transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Overlay -->
+    <div id="successOverlay"
+        class="fixed inset-0 bg-white z-50 hidden flex flex-col items-center justify-center p-8 text-center">
+        <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">Order Placed!</h2>
+        <p class="text-gray-600 mb-8">The kitchen has received your order for <b class="text-gray-900">Table <span
+                    id="successTable"></span></b>.</p>
+        <button onclick="window.location.reload()"
+            class="bg-emerald-600 text-white px-8 py-3 rounded-lg font-bold shadow hover:bg-emerald-700 transition">
+            Order More
+        </button>
+    </div>
+
+
+    <!-- Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, addDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
+            appId: '1:205492068242:web:04e1bd80de8974aa4eeb4b',
+            messagingSenderId: '205492068242',
+            projectId: 'feedy-cebf6',
+            authDomain: 'feedy-cebf6.firebaseapp.com',
+            storageBucket: 'feedy-cebf6.firebasestorage.app',
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        let cart = {};
+        const urlParams = new URLSearchParams(window.location.search);
+        let ownerId = urlParams.get('businessId') || urlParams.get('uid');
+
+        // Init
+        async function init() {
+            if (!ownerId) {
+                showError('Missing Business ID');
+                return;
+            }
+
+            document.getElementById('backBtn').onclick = () => window.location.href = `public_home.html?businessId=${ownerId}`;
+
+            try {
+                await loadMenu();
+            } catch (e) {
+                showError(e.message);
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('errorMsg').textContent = msg;
+        }
+
+        async function loadMenu() {
+            const q = query(collection(db, 'menu_sections'), where('ownerId', '==', ownerId), where('isActive', '==', true));
+            const snap = await getDocs(q);
+
+            document.getElementById('loading').classList.add('hidden');
+
+            if (snap.empty) {
+                document.getElementById('emptyMsg').classList.remove('hidden');
+                return;
+            }
+
+            const container = document.getElementById('menuContent');
+            snap.forEach(doc => {
+                const section = doc.data();
+                if (!section.dishes || !section.dishes.length) return;
+
+                const secDiv = document.createElement('div');
+                secDiv.className = 'bg-white rounded-xl shadow-sm p-4 border border-gray-100';
+
+                const title = document.createElement('h2');
+                title.className = 'text-lg font-bold text-gray-800 mb-4 border-b pb-2';
+                title.textContent = section.title;
+                secDiv.appendChild(title);
+
+                section.dishes.forEach(dish => {
+                    if (!dish.isAvailable) return;
+                    const dishEl = createDishElement(dish);
+                    secDiv.appendChild(dishEl);
+                });
+
+                container.appendChild(secDiv);
+
+                // Add spacer
+                const spacer = document.createElement('div');
+                spacer.className = 'h-4';
+                container.appendChild(spacer);
+            });
+        }
+
+        function createDishElement(dish) {
+            const el = document.createElement('div');
+            el.className = 'flex justify-between items-start py-4 border-b last:border-0 border-gray-100';
+            el.innerHTML = `
+        <div class="flex-1 pr-4">
+          <h3 class="font-bold text-gray-800 text-base">${dish.name}</h3>
+          <p class="text-sm text-gray-500 mt-1 line-clamp-2">${dish.description || ''}</p>
+          <p class="text-emerald-600 font-bold mt-2">$${parseFloat(dish.price).toFixed(2)}</p>
+        </div>
+        <div id="ctrl-${dish.id}" class="shrink-0"></div>
+      `;
+            // Init controls
+            updateControls(dish, el.querySelector(`#ctrl-${dish.id}`));
+            return el;
+        }
+
+        function updateControls(dish, container) {
+            const qty = cart[dish.id]?.qty || 0;
+            container.innerHTML = '';
+
+            if (qty === 0) {
+                const btn = document.createElement('button');
+                btn.className = 'bg-gray-100 hover:bg-gray-200 text-emerald-700 px-4 py-2 rounded-lg text-sm font-bold transition';
+                btn.textContent = 'Add';
+                btn.onclick = () => updateCart(dish, 1);
+                container.appendChild(btn);
+            } else {
+                const wrap = document.createElement('div');
+                wrap.className = 'flex items-center bg-gray-50 rounded-lg border border-gray-200';
+                wrap.innerHTML = `
+          <button class="w-8 h-8 flex items-center justify-center text-emerald-700 font-bold hover:bg-gray-200 rounded-l-lg" id="sub-${dish.id}">-</button>
+          <span class="w-8 text-center text-sm font-bold">${qty}</span>
+          <button class="w-8 h-8 flex items-center justify-center text-emerald-700 font-bold hover:bg-gray-200 rounded-r-lg" id="add-${dish.id}">+</button>
+        `;
+                container.appendChild(wrap);
+                document.getElementById(`sub-${dish.id}`).onclick = () => updateCart(dish, qty - 1);
+                document.getElementById(`add-${dish.id}`).onclick = () => updateCart(dish, qty + 1);
+            }
+        }
+
+        function updateCart(dish, qty) {
+            if (qty <= 0) delete cart[dish.id];
+            else cart[dish.id] = { ...dish, qty };
+
+            // Update UI
+            const ctrls = document.querySelectorAll(`#ctrl-${dish.id}`);
+            ctrls.forEach(c => updateControls(dish, c));
+            renderCartBar();
+        }
+
+        function renderCartBar() {
+            const items = Object.values(cart);
+            const count = items.reduce((a, b) => a + b.qty, 0);
+            const total = items.reduce((a, b) => a + (parseFloat(b.price) * b.qty), 0);
+
+            document.getElementById('cartCount').textContent = count;
+            document.getElementById('cartTotal').textContent = '$' + total.toFixed(2);
+
+            const bar = document.getElementById('cartBar');
+            if (count > 0) bar.classList.remove('hidden');
+            else bar.classList.add('hidden');
+        }
+
+        // Checkout Logic
+        const modal = document.getElementById('checkoutModal');
+        document.getElementById('checkoutBtn').onclick = () => {
+            modal.classList.remove('hidden');
+            setTimeout(() => document.getElementById('tableInput').focus(), 100);
+        };
+
+        document.getElementById('cancelCheckout').onclick = () => modal.classList.add('hidden');
+
+        document.getElementById('confirmCheckout').onclick = async () => {
+            const table = document.getElementById('tableInput').value;
+            if (!table) { alert('Table number required'); return; }
+
+            // Client-side validation: Logic check
+            if (Object.keys(cart).length === 0) {
+                alert('Your cart is empty');
+                modal.classList.add('hidden');
+                return;
+            }
+
+            const btn = document.getElementById('confirmCheckout');
+            btn.innerText = 'Sending...';
+            btn.disabled = true;
+
+            try {
+                const orderItems = Object.values(cart).map(i => ({
+                    dishId: i.id,
+                    name: i.name,
+                    price: parseFloat(i.price),
+                    quantity: i.qty,
+                    total: parseFloat(i.price) * i.qty
+                }));
+
+                const total = orderItems.reduce((a, b) => a + b.total, 0);
+
+                await addDoc(collection(db, 'orders'), {
+                    ownerId,
+                    tableNumber: table,
+                    items: orderItems,
+                    totalAmount: total,
+                    status: 'pending',
+                    createdAt: serverTimestamp()
+                });
+
+                modal.classList.add('hidden');
+                document.getElementById('successTable').textContent = table;
+                document.getElementById('successOverlay').classList.remove('hidden');
+
+            } catch (e) {
+                alert(e.message);
+                btn.disabled = false;
+                btn.innerText = 'Confirm';
+            }
+        };
+
+        init();
+    </script>
+</body>
+
+</html>

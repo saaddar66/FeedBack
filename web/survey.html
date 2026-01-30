@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedy - Survey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+    <header class="bg-indigo-600 text-white p-4 sticky top-0 z-30 shadow-md">
+        <div class="max-w-2xl mx-auto flex items-center gap-3">
+            <button id="backBtn" class="p-1 hover:bg-indigo-700 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+            </button>
+            <h1 class="text-xl font-bold">Feedback Survey</h1>
+        </div>
+    </header>
+
+    <main class="max-w-xl mx-auto p-4 pb-12">
+
+        <!-- Loading -->
+        <div id="loading" class="text-center py-20">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto"></div>
+            <p class="mt-4 text-gray-500">Loading survey...</p>
+        </div>
+
+        <!-- Survey Form -->
+        <div id="surveyContainer" class="hidden">
+            <form id="surveyForm" class="space-y-6">
+                <div id="questions" class="space-y-6"></div>
+                <button type="submit" id="submitSurvey"
+                    class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition">
+                    Submit Survey
+                </button>
+            </form>
+        </div>
+
+        <!-- General Feedback Form (Fallback/Next Step) -->
+        <div id="feedbackContainer" class="hidden">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-xl font-bold mb-6 text-gray-800">General Feedback</h2>
+                <form id="feedbackForm" class="space-y-4">
+                    <div>
+                        <label class="block font-medium mb-1 text-gray-700">Name (Optional)</label>
+                        <input type="text" name="name"
+                            class="w-full border rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block font-medium mb-1 text-gray-700">Email (Optional)</label>
+                        <input type="email" name="email"
+                            class="w-full border rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block font-medium mb-2 text-gray-700">Rating <span
+                                class="text-red-500">*</span></label>
+                        <div class="flex justify-center gap-2 mb-2" id="starContainer"></div>
+                        <input type="hidden" name="rating" id="ratingInput" required>
+                        <p id="ratingLabel" class="text-center text-indigo-600 font-medium h-6"></p>
+                    </div>
+                    <div>
+                        <label class="block font-medium mb-1 text-gray-700">Comments <span
+                                class="text-red-500">*</span></label>
+                        <textarea name="comments" rows="4" required
+                            class="w-full border rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition"></textarea>
+                    </div>
+                    <button type="submit" id="submitFeedback"
+                        class="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg transition">
+                        Submit Feedback
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Success -->
+        <div id="success" class="hidden text-center py-20">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Thank You!</h2>
+            <p class="text-gray-600 mb-8">Your feedback helps us improve.</p>
+            <button onclick="window.location.href=`public_home.html?uid=${ownerId}`"
+                class="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 transition">
+                Back to Home
+            </button>
+        </div>
+
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, addDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
+            appId: '1:205492068242:web:04e1bd80de8974aa4eeb4b',
+            messagingSenderId: '205492068242',
+            projectId: 'feedy-cebf6',
+            authDomain: 'feedy-cebf6.firebaseapp.com',
+            storageBucket: 'feedy-cebf6.firebasestorage.app',
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const urlParams = new URLSearchParams(window.location.search);
+        window.ownerId = urlParams.get('businessId') || urlParams.get('uid');
+        let activeSurveyId = null;
+
+        async function init() {
+            if (!ownerId) { alert('No user ID'); return; }
+            document.getElementById('backBtn').onclick = () => window.location.href = `public_home.html?businessId=${ownerId}`;
+
+            initStars();
+
+            try {
+                const q = query(collection(db, 'surveys'), where('creatorId', '==', ownerId), where('isActive', '==', true));
+                const snap = await getDocs(q);
+
+                document.getElementById('loading').classList.add('hidden');
+
+                if (!snap.empty) {
+                    const doc = snap.docs[0];
+                    activeSurveyId = doc.id;
+                    renderSurvey(doc.data());
+                } else {
+                    // No active survey -> show General Feedback
+                    document.getElementById('feedbackContainer').classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error(e);
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('feedbackContainer').classList.remove('hidden');
+            }
+        }
+
+        function renderSurvey(data) {
+            document.getElementById('surveyContainer').classList.remove('hidden');
+            const container = document.getElementById('questions');
+
+            // Basic rendering of questions (simplified for brevity, matching previous logic)
+            if (data.questions) {
+                Object.entries(data.questions).forEach(([qid, q]) => {
+                    if (!q || (typeof q === 'object' && q.value === false)) return;
+                    const qData = typeof q === 'object' ? q : { text: qid, type: 'text' };
+
+                    const el = document.createElement('div');
+                    el.className = 'bg-white p-5 rounded-xl shadow-sm border border-gray-100';
+
+                    const label = document.createElement('label');
+                    label.className = 'block font-bold text-gray-800 mb-3';
+                    label.textContent = qData.text || qData.question || qid;
+                    el.appendChild(label);
+
+                    let input;
+                    if (qData.type === 'text') {
+                        input = document.createElement('textarea');
+                        input.name = qid;
+                        input.className = 'w-full border rounded-lg p-3 bg-gray-50 outline-none';
+                    } else if (qData.type === 'singleChoice' && qData.options) {
+                        input = document.createElement('div');
+                        input.className = 'space-y-2';
+                        qData.options.forEach(opt => {
+                            input.innerHTML += `<label class="flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50"><input type="radio" name="${qid}" value="${opt}" class="w-4 h-4 text-indigo-600"> ${opt}</label>`;
+                        });
+                    } else {
+                        // Fallback
+                        input = document.createElement('input');
+                        input.type = 'text';
+                        input.name = qid;
+                        input.className = 'w-full border rounded-lg p-3 bg-gray-50 outline-none';
+                    }
+                    el.appendChild(input);
+                    container.appendChild(el);
+                });
+            }
+        }
+
+        function initStars() {
+            const container = document.getElementById('starContainer');
+            const input = document.getElementById('ratingInput');
+            const labels = ['Very Bad', 'Bad', 'Okay', 'Good', 'Excellent'];
+
+            for (let i = 1; i <= 5; i++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.innerHTML = '★';
+                btn.className = 'text-4xl text-gray-300 transition hover:scale-110 focus:outline-none';
+                btn.onclick = () => {
+                    input.value = i;
+                    document.getElementById('ratingLabel').textContent = labels[i - 1];
+                    Array.from(container.children).forEach((s, idx) => {
+                        s.className = idx < i ? 'text-4xl text-yellow-400 transition hover:scale-110 focus:outline-none' : 'text-4xl text-gray-300 transition hover:scale-110 focus:outline-none';
+                    });
+                };
+                container.appendChild(btn);
+            }
+        }
+
+        // Handlers
+        document.getElementById('surveyForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitSurvey');
+            btn.innerText = 'Submitting...';
+            btn.disabled = true;
+
+            try {
+                const formData = new FormData(e.target);
+                await addDoc(collection(db, 'survey_responses'), {
+                    ...Object.fromEntries(formData),
+                    owner_id: ownerId,
+                    survey_id: activeSurveyId,
+                    submitted_at: serverTimestamp()
+                });
+
+                document.getElementById('surveyContainer').classList.add('hidden');
+                document.getElementById('feedbackContainer').classList.remove('hidden');
+            } catch (e) {
+                alert('Error: ' + e.message);
+                btn.innerText = 'Submit Survey';
+                btn.disabled = false;
+            }
+        };
+
+        document.getElementById('feedbackForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitFeedback');
+            btn.innerText = 'Sending...';
+            btn.disabled = true;
+
+            try {
+                const formData = new FormData(e.target);
+                await addDoc(collection(db, 'feedback'), {
+                    ...Object.fromEntries(formData),
+                    rating: parseInt(formData.get('rating')),
+                    owner_id: ownerId,
+                    created_at: new Date().toISOString()
+                });
+
+                document.getElementById('feedbackContainer').classList.add('hidden');
+                document.getElementById('success').classList.remove('hidden');
+            } catch (e) {
+                alert('Error: ' + e.message);
+                btn.innerText = 'Submit Feedback';
+                btn.disabled = false;
+            }
+        };
+
+        init();
+    </script>
+</body>
+
+</html>

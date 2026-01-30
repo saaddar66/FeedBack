@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -291,6 +292,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // Stats Cards with optimized selector (rebuilds only when stats change)
                 _buildStatsCardsSelector(),
                 const SizedBox(height: 16),
+
+                // Pending Orders Banner
+                _buildPendingOrdersCard(),
+                const SizedBox(height: 16),
                 
                 // Quick action buttons
                 _buildQuickActionsRow(),
@@ -342,6 +347,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Builds the pending orders card with realtime count
+  Widget _buildPendingOrdersCard() {
+    final user = context.watch<AuthProvider>().user;
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('ownerId', isEqualTo: user.id)
+          .where('status', isEqualTo: 'pending')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+        
+        return Card(
+          elevation: 2,
+          color: Colors.orange.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.orange.shade200),
+          ),
+          child: InkWell(
+            onTap: () => context.go('/orders'),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.receipt_long, color: Colors.orange.shade800, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Pending Orders',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          count == 0 
+                              ? 'No orders waiting' 
+                              : '$count orders awaiting action',
+                          style: TextStyle(
+                            color: Colors.grey.shade700, 
+                            fontWeight: count > 0 ? FontWeight.w600 : FontWeight.normal
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (count > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -755,9 +843,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String baseUrl;
     if (kIsWeb) {
       final uri = Uri.base;
-      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/public';
+      // Point to the optimized HTML landing page
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/public_home.html';
     } else {
-      baseUrl = 'https://feedy-cebf6.web.app/#/public'; 
+      baseUrl = 'https://feedy-cebf6.web.app/public_home.html'; 
     }
 
     // Get current user details
@@ -766,9 +855,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final ownerId = user?.id;
     final businessName = user?.businessName;
 
-    // Use URL with UID if available
+    // Use URL with businessId
     final qrData = (ownerId != null && ownerId.isNotEmpty) 
-        ? '$baseUrl?uid=$ownerId' 
+        ? '$baseUrl?businessId=$ownerId' 
         : baseUrl;
 
     final screenWidth = MediaQuery.of(context).size.width;

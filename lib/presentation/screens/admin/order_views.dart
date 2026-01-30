@@ -1,0 +1,293 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import '../../providers/auth_provider.dart';
+
+// Simple model for orders (local to this file for now as per request scope)
+class OrderModel {
+  final String id;
+  final String tableNumber;
+  final double totalAmount;
+  final String status;
+  final List<dynamic> items; // List of maps
+  final DateTime createdAt;
+  final String? ownerId;
+
+  OrderModel({
+    required this.id,
+    required this.tableNumber,
+    required this.totalAmount,
+    required this.status,
+    required this.items,
+    required this.createdAt,
+    this.ownerId,
+  });
+
+  factory OrderModel.fromMap(Map<String, dynamic> map, String id) {
+    return OrderModel(
+      id: id,
+      tableNumber: map['tableNumber']?.toString() ?? '?',
+      totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      status: map['status']?.toString() ?? 'pending',
+      items: (map['items'] as List?) ?? [],
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      ownerId: map['ownerId']?.toString(),
+    );
+  }
+}
+
+class OrderListScreen extends StatefulWidget {
+  const OrderListScreen({super.key});
+
+  @override
+  State<OrderListScreen> createState() => _OrderListScreenState();
+}
+
+class _OrderListScreenState extends State<OrderListScreen> {
+  // Use a stream for real-time updates of incoming orders
+  Stream<List<OrderModel>>? _ordersStream;
+  bool _showCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initStream();
+  }
+
+  void _initStream() {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) return;
+
+    Query query = FirebaseFirestore.instance.collection('orders')
+        .where('ownerId', isEqualTo: user.id.toString());
+    
+    // Simple client-side toggle for status to avoid complex indexes if possible,
+    // but ideally we filter by status in query. 
+    // Let's filter by status in memory to avoid composite index issues for now, 
+    // unless the list is huge.
+    
+    _ordersStream = query.snapshots().map((snapshot) {
+      final orders = snapshot.docs.map((doc) {
+        return OrderModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      }).toList();
+      
+      // Sort by newest first
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return orders;
+    });
+  }
+
+  Future<void> _updateOrderStatus(String orderId, String newStatus) async {
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+        'status': newStatus,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Order marked as $newStatus')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating order: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_showCompleted ? 'Order History' : 'Pending Orders'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/dashboard'),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: Icon(_showCompleted ? Icons.pending_actions : Icons.history),
+            label: Text(_showCompleted ? 'View Pending' : 'View History'),
+            onPressed: () {
+              setState(() {
+                _showCompleted = !_showCompleted;
+              });
+            },
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<OrderModel>>(
+        stream: _ordersStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final allOrders = snapshot.data ?? [];
+          
+          // Filter in memory based on tab
+          final orders = allOrders.where((o) {
+            final isPending = o.status == 'pending';
+            return _showCompleted ? !isPending : isPending;
+          }).toList();
+
+          if (orders.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _showCompleted ? Icons.history : Icons.shopping_cart_outlined,
+                    size: 64,
+                    color: Colors.grey[300],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _showCompleted 
+                      ? 'No completed orders yet' 
+                      : 'No pending orders',
+                    style: TextStyle(fontSize: 18, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: orders.length,
+            itemBuilder: (context, index) {
+              final order = orders[index];
+              return Card(
+                elevation: 3,
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: order.status == 'pending' ? Colors.orange.withOpacity(0.5) : Colors.transparent, 
+                    width: 1
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.blue[200]!),
+                                ),
+                                child: Text(
+                                  'Table ${order.tableNumber}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                DateFormat('h:mm a').format(order.createdAt),
+                                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: order.status == 'pending' ? Colors.orange[100] : Colors.green[100],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              order.status.toUpperCase(),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: order.status == 'pending' ? Colors.orange[900] : Colors.green[900],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      ...order.items.map<Widget>((item) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${item['quantity']}x',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  item['name'] ?? 'Unknown Item',
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                              ),
+                              Text(
+                                '\$${(item['total'] as num).toStringAsFixed(2)}',
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total: \$${order.totalAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 18, 
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                          if (order.status == 'pending')
+                            ElevatedButton.icon(
+                              onPressed: () => _updateOrderStatus(order.id, 'completed'),
+                              icon: const Icon(Icons.check),
+                              label: const Text('Complete Order'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}

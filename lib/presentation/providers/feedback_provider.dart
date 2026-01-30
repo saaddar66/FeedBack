@@ -15,6 +15,8 @@ Map<String, dynamic> calculateStats(List<Map<String, dynamic>> feedbackJsonList)
       rating: json['rating'] as int,
       comments: json['comments'] as String,
       createdAt: DateTime.parse(json['created_at'] as String), // Note: created_at from toMap()
+      ownerId: json['owner_id'] as String?,
+      surveyId: json['survey_id'] as String?,
     );
   }).toList();
 
@@ -123,7 +125,15 @@ class FeedbackProvider with ChangeNotifier {
 
   /// Loads the active survey for the user-facing screen
   Future<void> loadActiveSurvey({String? userId}) async {
-    _activeSurvey = await _repository.getActiveSurvey(userId: userId);
+    try {
+      print('DEBUG: fetching active survey for user: $userId');
+      _activeSurvey = await _repository.getActiveSurvey(userId: userId);
+      print('DEBUG: Survey search complete. Found: ${_activeSurvey?.title}');
+    } catch (e, stack) {
+      print('CRITICAL ERROR in loadActiveSurvey: $e');
+      print(stack);
+      _activeSurvey = null; // Ensure clean state
+    }
     resetSurveyAnswers();
     notifyListeners();
   }
@@ -155,6 +165,22 @@ class FeedbackProvider with ChangeNotifier {
   void updateEditingSurveyTitle(String title) {
     if (_editingSurvey != null) {
       _editingSurvey!.title = title;
+      notifyListeners();
+    }
+  }
+
+  /// Updates tax rate for the editing survey/menu
+  void updateEditingSurveyTaxRate(double? rate) {
+    if (_editingSurvey != null) {
+      _editingSurvey = _editingSurvey!.copyWith(taxRate: rate);
+      notifyListeners();
+    }
+  }
+
+  /// Updates service charge rate for the editing survey/menu
+  void updateEditingSurveyServiceChargeRate(double? rate) {
+    if (_editingSurvey != null) {
+      _editingSurvey = _editingSurvey!.copyWith(serviceChargeRate: rate);
       notifyListeners();
     }
   }

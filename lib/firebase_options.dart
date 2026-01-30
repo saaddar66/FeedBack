@@ -41,14 +41,13 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static FirebaseOptions get web => FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_API_KEY_WEB']!,
-    appId: dotenv.env['FIREBASE_APP_ID_WEB']!,
-    messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
-    projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
-    authDomain: dotenv.env['FIREBASE_AUTH_DOMAIN'],
-    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
-    storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
+  static FirebaseOptions get web => const FirebaseOptions(
+    apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
+    appId: '1:205492068242:web:04e1bd80de8974aa4eeb4b',
+    messagingSenderId: '205492068242',
+    projectId: 'feedy-cebf6',
+    authDomain: 'feedy-cebf6.firebaseapp.com',
+    storageBucket: 'feedy-cebf6.firebasestorage.app',
   );
 
   static FirebaseOptions get android => FirebaseOptions(
@@ -56,7 +55,6 @@ class DefaultFirebaseOptions {
     appId: dotenv.env['FIREBASE_APP_ID_ANDROID']!,
     messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
     projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
-    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
     storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
   );
 
@@ -65,7 +63,6 @@ class DefaultFirebaseOptions {
     appId: dotenv.env['FIREBASE_APP_ID_IOS']!,
     messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
     projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
-    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
     storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
     iosBundleId: dotenv.env['FIREBASE_IOS_BUNDLE_ID'],
   );
@@ -75,7 +72,6 @@ class DefaultFirebaseOptions {
     appId: dotenv.env['FIREBASE_APP_ID_IOS']!,
     messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
     projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
-    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
     storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
     iosBundleId: dotenv.env['FIREBASE_IOS_BUNDLE_ID'],
   );
@@ -86,7 +82,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID']!,
     projectId: dotenv.env['FIREBASE_PROJECT_ID']!,
     authDomain: dotenv.env['FIREBASE_AUTH_DOMAIN'],
-    databaseURL: dotenv.env['FIREBASE_DATABASE_URL'],
     storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'],
   );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -31,7 +32,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
+    // Listen for auth changes to load data once auth is ready
+    context.read<AuthProvider>().addListener(_onAuthChanged);
+    // Initial load attempt - deferred to next frame to avoid 'setState during build' error
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDashboardData();
+    });
+  }
+
+  @override
+  void dispose() {
+    // Remove listener to prevent memory leaks
+    context.read<AuthProvider>().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  /// Called when AuthProvider state changes
+  void _onAuthChanged() {
+    if (!mounted) return;
+    final authProvider = context.read<AuthProvider>();
+    
+    // If auth just finished loading and we have a user, load the data
+    if (!authProvider.isLoading && authProvider.user != null) {
+      // Only load if we haven't successfully loaded recently (optional optimization)
+      if (!_hasError) { // Simple check, could be more robust
+         _loadDashboardData();
+      }
+    }
   }
 
   /// Loads all dashboard data with comprehensive error handling
@@ -57,8 +84,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      context.read<FeedbackProvider>().setCurrentUser(userId);
+      context.read<FeedbackProvider>().setCurrentUser(userId); // Bind dashboard to this user
       await context.read<FeedbackProvider>().loadFeedback();
+      
       
       if (mounted) {
         setState(() => _lastRefreshTime = DateTime.now());
@@ -139,6 +167,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          // Header with welcome message for authenticity
           children: [
             const Text('Feedback Dashboard'),
             if (user != null)
@@ -191,16 +220,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       
-      body: Selector<FeedbackProvider, bool>(
-        selector: (_, provider) => provider.isLoading,
-        builder: (context, isLoading, child) {
-          // Show loading on first load only
-          if (isLoading && context.read<FeedbackProvider>().feedbackList.isEmpty) {
+      body: Selector<FeedbackProvider, _DashboardLoadingState>(
+        selector: (_, provider) => _DashboardLoadingState(
+          isLoading: provider.isLoading,
+          isEmpty: provider.feedbackList.isEmpty,
+        ),
+        builder: (context, state, child) {
+          // Show loading on first load only (prevents flickering on refresh)
+          if (state.isLoading && state.isEmpty) {
             return const LoadingWidget(message: 'Loading dashboard...');
           }
 
           // Show error state if data loading failed
-          if (_hasError && context.read<FeedbackProvider>().feedbackList.isEmpty) {
+          if (_hasError && state.isEmpty) {
             return _buildErrorState();
           }
 
@@ -225,7 +257,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildDashboardContent() {
     return RefreshIndicator(
       onRefresh: () async {
-        await _loadDashboardData();
+        await _loadDashboardData(); // Trigger data reload on pull
         if (mounted) {
           _showSuccessSnackbar('Dashboard refreshed');
         }
@@ -257,8 +289,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 
-                // Stats Cards with optimized selector
+                // Stats Cards with optimized selector (rebuilds only when stats change)
                 _buildStatsCardsSelector(),
+                const SizedBox(height: 16),
+
+                // Pending Orders Banner
+                _buildPendingOrdersCard(),
                 const SizedBox(height: 16),
                 
                 // Quick action buttons
@@ -298,7 +334,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icons.list_alt,
             label: 'All Feedback',
             color: Colors.blue,
-            onTap: () => context.go('/feedback-results'),
+            onTap: () => context.go('/feedback-results'), // Navigate to full feedback list
           ),
         ),
         const SizedBox(width: 12),
@@ -307,10 +343,93 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icons.assessment_outlined,
             label: 'All Surveys',
             color: Colors.purple,
-            onTap: () => context.go('/survey-results'),
+            onTap: () => context.go('/survey-results'), // Navigate to full survey list
           ),
         ),
       ],
+    );
+  }
+
+  /// Builds the pending orders card with realtime count
+  Widget _buildPendingOrdersCard() {
+    final user = context.watch<AuthProvider>().user;
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('ownerId', isEqualTo: user.id)
+          .where('status', isEqualTo: 'pending')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+        
+        return Card(
+          elevation: 2,
+          color: Colors.orange.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.orange.shade200),
+          ),
+          child: InkWell(
+            onTap: () => context.go('/orders'),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.receipt_long, color: Colors.orange.shade800, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Pending Orders',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          count == 0 
+                              ? 'No orders waiting' 
+                              : '$count orders awaiting action',
+                          style: TextStyle(
+                            color: Colors.grey.shade700, 
+                            fontWeight: count > 0 ? FontWeight.w600 : FontWeight.normal
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (count > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -452,7 +571,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _buildFilterText(provider),
+                    _buildFilterText(filters),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -476,21 +595,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Builds human readable filter description text
-  String _buildFilterText(FeedbackProvider provider) {
+  String _buildFilterText(FilterData filters) {
     final parts = <String>[];
     
-    if (provider.selectedMinRating != null || provider.selectedMaxRating != null) {
-      final min = provider.selectedMinRating ?? 1;
-      final max = provider.selectedMaxRating ?? 5;
+    if (filters.selectedMinRating != null || filters.selectedMaxRating != null) {
+      final min = filters.selectedMinRating ?? 1;
+      final max = filters.selectedMaxRating ?? 5;
       parts.add('Rating: $min-$max ⭐');
     }
     
-    if (provider.startDate != null || provider.endDate != null) {
-      final start = provider.startDate != null
-          ? DateFormat('MMM d').format(provider.startDate!)
+    if (filters.startDate != null || filters.endDate != null) {
+      final start = filters.startDate != null
+          ? DateFormat('MMM d').format(filters.startDate!)
           : 'Start';
-      final end = provider.endDate != null
-          ? DateFormat('MMM d').format(provider.endDate!)
+      final end = filters.endDate != null
+          ? DateFormat('MMM d').format(filters.endDate!)
           : 'End';
       parts.add('Date: $start - $end');
     }
@@ -647,6 +766,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: Colors.grey[700]!,
               ),
               _BottomNavButton(
+                icon: Icons.restaurant_menu,
+                label: 'Menu',
+                onPressed: () => context.push('/menu'),
+                color: Colors.grey[700]!,
+              ),
+              _BottomNavButton(
                 icon: Icons.qr_code_2,
                 label: 'Show QR',
                 onPressed: () => _showQrCodeDialog(context),
@@ -718,9 +843,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String baseUrl;
     if (kIsWeb) {
       final uri = Uri.base;
-      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/survey';
+      // Point to the optimized HTML landing page
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/public_home.html';
     } else {
-      baseUrl = 'https://feedy-cebf6.web.app/#/survey'; 
+      baseUrl = 'https://feedy-cebf6.web.app/public_home.html'; 
     }
 
     // Get current user details
@@ -729,9 +855,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final ownerId = user?.id;
     final businessName = user?.businessName;
 
-    // Use URL with UID if available
+    // Use URL with businessId
     final qrData = (ownerId != null && ownerId.isNotEmpty) 
-        ? '$baseUrl?uid=$ownerId' 
+        ? '$baseUrl?businessId=$ownerId' 
         : baseUrl;
 
     final screenWidth = MediaQuery.of(context).size.width;
@@ -743,49 +869,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Scan to Give Feedback',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
-              QrImageView(
-                data: qrData,
-                version: QrVersions.auto,
-                size: qrSize,
-                backgroundColor: Colors.white,
-              ),
-              const SizedBox(height: 16),
-              if (businessName != null && businessName.isNotEmpty)
-                Text(
-                  'Linked to: $businessName',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.blueGrey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Scan to Give Feedback',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                )
-              else if (ownerId != null)
-                Text(
-                   ownerId.length > 4 
-                      ? 'ID: ${ownerId.substring(0, 4)}...'
-                      : 'ID: $ownerId',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Close'),
+                const SizedBox(height: 24),
+                QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: qrSize,
+                  backgroundColor: Colors.white,
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                if (businessName != null && businessName.isNotEmpty)
+                  Text(
+                    'Linked to: $businessName',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.blueGrey,
+                    ),
+                  )
+                else if (ownerId != null)
+                  Text(
+                     ownerId.length > 4 
+                        ? 'ID: ${ownerId.substring(0, 4)}...'
+                        : 'ID: $ownerId',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                const SizedBox(height: 8),
+                // Debug: Show URL
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    qrData,
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -793,80 +935,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+
 /// Stat card widget showing metric with icon and gradient
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
-  final String subtitle;
+  final String? subtitle;
 
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
-    required this.subtitle,
+    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
-    final gradientColors = icon == Icons.feedback
-        ? [Colors.blue.shade50, Colors.white]
-        : [Colors.amber.shade50, Colors.white];
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: gradientColors,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    return Card(
+      elevation: 2,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, color.withOpacity(0.05)],
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(icon, color: color, size: 28),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: color,
+                Icon(icon, color: color, size: 20),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
             Text(
-              title,
+              value,
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
+                fontSize: 24, 
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
               ),
             ),
-            const SizedBox(height: 2),
             Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[500],
-              ),
+              title,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -875,7 +1000,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// Quick action card for navigation buttons
+/// Quick action card for navigation
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -891,40 +1016,39 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
                 ),
-                overflow: TextOverflow.ellipsis,
+                child: Icon(icon, color: color, size: 28),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Bottom navigation button with icon and label
+/// Bottom navigation button widget
 class _BottomNavButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -942,20 +1066,20 @@ class _BottomNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.all(8.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 28, color: color),
+            Icon(icon, color: color, size: 24),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+                fontSize: 12,
                 color: color,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -963,4 +1087,21 @@ class _BottomNavButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Helper class to combine loading state for selector
+class _DashboardLoadingState {
+  final bool isLoading;
+  final bool isEmpty;
+  
+  _DashboardLoadingState({required this.isLoading, required this.isEmpty});
+  
+  @override
+  bool operator ==(Object other) => 
+    other is _DashboardLoadingState && 
+    other.isLoading == isLoading && 
+    other.isEmpty == isEmpty;
+  
+  @override
+  int get hashCode => Object.hash(isLoading, isEmpty);
 }

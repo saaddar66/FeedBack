@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import '../../providers/feedback_provider.dart';
+import '../../providers/menu_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../../data/models/survey_models.dart';
+import '../../../data/models/menu_models.dart';
 import 'package:intl/intl.dart';
 
-/// Production-ready screen displaying all survey forms with loading states
-/// Allows creating, editing, deleting, and toggling active survey status
-class SurveyListScreen extends StatefulWidget {
-  const SurveyListScreen({super.key});
+/// Production-ready screen displaying all menu sections with loading states
+/// Allows creating, editing, deleting, and toggling active menu status
+class MenuListScreen extends StatefulWidget {
+  const MenuListScreen({super.key});
 
   @override
-  State<SurveyListScreen> createState() => _SurveyListScreenState();
+  State<MenuListScreen> createState() => _MenuListScreenState();
 }
 
-class _SurveyListScreenState extends State<SurveyListScreen> {
+class _MenuListScreenState extends State<MenuListScreen> {
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
@@ -24,11 +24,11 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSurveys();
+    _loadMenus();
   }
 
-  /// Loads all surveys with proper loading and error states
-  Future<void> _loadSurveys() async {
+  /// Loads all menus with proper loading and error states
+  Future<void> _loadMenus() async {
     if (!mounted) return;
     
     setState(() {
@@ -38,7 +38,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
     try {
       final userId = context.read<AuthProvider>().user?.id.toString();
-      await context.read<FeedbackProvider>().loadSurveys(userId: userId); // Fetch all surveys for this user
+      await context.read<MenuProvider>().loadMenus(userId: userId); // Fetch all menus for this user
       
       if (mounted) {
         setState(() => _isLoading = false);
@@ -51,55 +51,55 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           _errorMessage = e.toString();
         });
         
-        _showErrorSnackbar('Error loading surveys: $e');
+        _showErrorSnackbar('Error loading menus: $e');
       }
     }
   }
 
-  /// Creates new survey and navigates to editor
-  Future<void> _createNewSurvey() async {
+  /// Creates new menu and navigates to editor
+  Future<void> _createNewMenu() async {
     try {
       final userId = context.read<AuthProvider>().user?.id.toString();
-      context.read<FeedbackProvider>().startEditingSurvey(null, creatorId: userId); // Initialize blank survey
-      await context.push('/config/edit');
+      context.read<MenuProvider>().startEditingMenu(null, ownerId: userId); // Initialize blank menu
+      await context.push('/menu/edit');
       
       if (mounted) {
-         await _loadSurveys(); // Refresh list after returning
+         await _loadMenus(); // Refresh list after returning
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar('Error creating survey: $e');
+        _showErrorSnackbar('Error creating menu: $e');
       }
     }
   }
 
-  /// Opens existing survey in edit mode
-  Future<void> _editSurvey(SurveyForm survey) async {
-    if (_processingIds.contains(survey.id)) return;
+  /// Opens existing menu in edit mode
+  Future<void> _editMenu(MenuSection menu) async {
+    if (_processingIds.contains(menu.id)) return;
     
     try {
-      context.read<FeedbackProvider>().startEditingSurvey(survey); // Load survey into editor state
-      await context.push('/config/edit');
+      context.read<MenuProvider>().startEditingMenu(menu); // Load menu into editor state
+      await context.push('/menu/edit');
       
       if (mounted) {
-         await _loadSurveys(); // Refresh list to show any changes
+         await _loadMenus(); // Refresh list to show any changes
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar('Error editing survey: $e');
+        _showErrorSnackbar('Error editing menu: $e');
       }
     }
   }
 
-  /// Deletes survey with optimistic UI update and rollback
-  void _deleteSurvey(BuildContext context, SurveyForm survey) {
-    if (_processingIds.contains(survey.id)) return;
+  /// Deletes menu with optimistic UI update and rollback
+  void _deleteMenu(BuildContext context, MenuSection menu) {
+    if (_processingIds.contains(menu.id)) return;
     
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Survey'),
-        content: Text('Are you sure you want to delete "${survey.title}"? This cannot be undone.'),
+        title: const Text('Delete Menu'),
+        content: Text('Are you sure you want to delete "${menu.title}"? This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -110,21 +110,21 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
               Navigator.of(ctx).pop();
               
               // Mark as processing
-              setState(() => _processingIds.add(survey.id));
+              setState(() => _processingIds.add(menu.id));
               
               try {
-                await context.read<FeedbackProvider>().deleteSurvey(survey.id); // Permanently remove survey
+                await context.read<MenuProvider>().deleteMenu(menu.id); // Permanently remove menu
                 
                 if (context.mounted) {
-                  _showSuccessSnackbar('Survey deleted successfully');
+                  _showSuccessSnackbar('Menu deleted successfully');
                 }
               } catch (e) {
                 if (context.mounted) {
-                  _showErrorSnackbar('Failed to delete survey: $e');
+                  _showErrorSnackbar('Failed to delete menu: $e');
                 }
               } finally {
                 if (mounted) {
-                  setState(() => _processingIds.remove(survey.id));
+                  setState(() => _processingIds.remove(menu.id));
                 }
               }
             },
@@ -136,28 +136,28 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
     );
   }
 
-  /// Toggles survey active status
-  Future<void> _toggleSurveyActive(SurveyForm survey) async {
-    if (_processingIds.contains(survey.id)) return;
+  /// Toggles menu active status
+  Future<void> _toggleMenuActive(MenuSection menu) async {
+    if (_processingIds.contains(menu.id)) return;
     
     // Mark as processing
-    setState(() => _processingIds.add(survey.id));
+    setState(() => _processingIds.add(menu.id));
     
-    final wasActive = survey.isActive;
+    final wasActive = menu.isActive;
     
     try {
-      await context.read<FeedbackProvider>().toggleSurveyActive(survey.id); // Set active/inactive in DB
+      await context.read<MenuProvider>().toggleMenuActive(menu.id); // Set active/inactive in DB
       
       if (mounted) {
-        _showSuccessSnackbar(wasActive ? 'Survey deactivated' : 'Survey activated');
+        _showSuccessSnackbar(wasActive ? 'Menu deactivated' : 'Menu activated');
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar('Error toggling survey: $e');
+        _showErrorSnackbar('Error toggling menu: $e');
       }
     } finally {
       if (mounted) {
-        setState(() => _processingIds.remove(survey.id));
+        setState(() => _processingIds.remove(menu.id));
       }
     }
   }
@@ -185,7 +185,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
         action: SnackBarAction(
           label: 'Retry',
           textColor: Colors.white,
-          onPressed: _loadSurveys,
+          onPressed: _loadMenus,
         ),
       ),
     );
@@ -193,12 +193,12 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final surveys = context.watch<FeedbackProvider>().surveys; // Listen to survey list changes
+    final menus = context.watch<MenuProvider>().menus; // Listen to menu list changes
 
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Survey Configuration'),
+        title: const Text('Menu Management'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/dashboard'),
@@ -207,16 +207,16 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           // Refresh button
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _isLoading ? null : _loadSurveys,
+            onPressed: _isLoading ? null : _loadMenus,
             tooltip: 'Refresh',
           ),
         ],
       ),
-      body: _buildBody(surveys),
+      body: _buildBody(menus),
       floatingActionButton: (!_isLoading && !_hasError)
           ? FloatingActionButton(
-              onPressed: _createNewSurvey,
-              tooltip: 'Create New Survey',
+              onPressed: _createNewMenu,
+              tooltip: 'Create New Menu',
               child: const Icon(Icons.add),
             )
           : null,
@@ -224,7 +224,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
   }
 
   /// Builds appropriate body based on loading error empty states
-  Widget _buildBody(List<SurveyForm> surveys) {
+  Widget _buildBody(List<MenuSection> menus) {
     if (_isLoading) {
       return const Center(
         child: Column(
@@ -233,7 +233,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
             CircularProgressIndicator(),
             SizedBox(height: 16),
             Text(
-              'Loading surveys...',
+              'Loading menus...',
               style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
           ],
@@ -253,7 +253,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Failed to load surveys',
+              'Failed to load menus',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -267,7 +267,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _loadSurveys,
+              onPressed: _loadMenus,
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
             ),
@@ -276,31 +276,31 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
       );
     }
 
-    if (surveys.isEmpty) {
+    if (menus.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.quiz_outlined,
+              Icons.restaurant_menu,
               size: 64,
               color: Colors.grey[400],
             ),
             const SizedBox(height: 16),
             const Text(
-              'No surveys found',
+              'No menus found',
               style: TextStyle(fontSize: 18, color: Colors.grey),
             ),
             const SizedBox(height: 8),
             Text(
-              'Create your first survey to get started',
+              'Create your first menu to get started',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _createNewSurvey,
+              onPressed: _createNewMenu,
               icon: const Icon(Icons.add),
-              label: const Text('Create New Survey'),
+              label: const Text('Create New Menu'),
             ),
           ],
         ),
@@ -309,17 +309,17 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: surveys.length,
+      itemCount: menus.length,
       itemBuilder: (context, index) {
-        final survey = surveys[index];
-        return _buildSurveyCard(context, survey);
+        final menu = menus[index];
+        return _buildMenuCard(context, menu);
       },
     );
   }
 
-  /// Builds survey card with all actions and loading states
-  Widget _buildSurveyCard(BuildContext context, SurveyForm survey) {
-    final isProcessing = _processingIds.contains(survey.id); // Check if operation pending for this item
+  /// Builds menu card with all actions and loading states
+  Widget _buildMenuCard(BuildContext context, MenuSection menu) {
+    final isProcessing = _processingIds.contains(menu.id); // Check if operation pending for this item
 
     
     return Opacity(
@@ -329,19 +329,38 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: survey.isActive 
+          side: menu.isActive 
               ? const BorderSide(color: Colors.green, width: 2) 
               : BorderSide.none,
         ),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          onTap: isProcessing ? null : () => _editSurvey(survey),
+          onTap: isProcessing ? null : () => _editMenu(menu),
           title: Text(
-            survey.title.isEmpty ? 'Untitled Survey' : survey.title,
+            menu.title.isEmpty ? 'Untitled Menu' : menu.title,
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          subtitle: Text(
-            '${survey.questions.length} Questions • Created ${DateFormat('MMM d, y').format(survey.createdAt)}',
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${menu.dishes.length} Dishes • Created ${DateFormat('MMM d, y').format(menu.createdAt)}',
+              ),
+              if (menu.description.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    menu.description,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -360,17 +379,17 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                 IconButton(
                   icon: Icon(
                     Icons.power_settings_new,
-                    color: survey.isActive ? Colors.green : Colors.red,
+                    color: menu.isActive ? Colors.green : Colors.red,
                     size: 28,
                   ),
-                  tooltip: survey.isActive ? 'Active (Turn Off)' : 'Inactive (Turn On)',
+                  tooltip: menu.isActive ? 'Active (Turn Off)' : 'Inactive (Turn On)',
                   onPressed: () {
                     // Validate before toggling
-                    if (survey.questions.isEmpty) {
-                      _showErrorSnackbar('Cannot activate a survey with no questions');
+                    if (menu.dishes.isEmpty) {
+                      _showErrorSnackbar('Cannot activate a menu with no dishes');
                       return;
                     }
-                    _toggleSurveyActive(survey);
+                    _toggleMenuActive(menu);
                   },
                 ),
                 const SizedBox(width: 8),
@@ -378,17 +397,17 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                 IconButton(
                   icon: const Icon(Icons.delete_outline, color: Colors.grey),
                   onPressed: () {
-                    // Warn if deleting the only active survey
-                    final surveys = context.read<FeedbackProvider>().surveys;
-                    final activeSurveys = surveys.where((s) => s.isActive).length;
+                    // Warn if deleting the only active menu
+                    final menus = context.read<MenuProvider>().menus;
+                    final activeMenus = menus.where((m) => m.isActive).length;
                     
-                    if (survey.isActive && activeSurveys == 1) {
+                    if (menu.isActive && activeMenus == 1) {
                       showDialog(
                         context: context,
                         builder: (ctx) => AlertDialog(
                           title: const Text('Warning'),
                           content: const Text(
-                            'This is your only active survey. Deleting it will leave you with no active surveys. Continue?'
+                            'This is your only active menu. Deleting it will leave you with no active menus. Continue?'
                           ),
                           actions: [
                             TextButton(
@@ -398,7 +417,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                             TextButton(
                               onPressed: () {
                                 Navigator.of(ctx).pop();
-                                _deleteSurvey(context, survey);
+                                _deleteMenu(context, menu);
                               },
                               style: TextButton.styleFrom(foregroundColor: Colors.red),
                               child: const Text('Delete Anyway'),
@@ -407,13 +426,14 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                         ),
                       );
                     } else {
-                      _deleteSurvey(context, survey);
+                      _deleteMenu(context, menu);
                     }
                   },
                 ),
               ],
             ],
           ),
+          isThreeLine: menu.description.isNotEmpty,
         ),
       ),
     );

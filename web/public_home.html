@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedy - Public Access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-8 text-center">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Welcome</h1>
+        <p class="text-gray-600 mb-8">What would you like to do?</p>
+
+        <div class="space-y-4">
+            <button id="btnSurvey"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Take Survey
+            </button>
+
+            <button id="btnMenu"
+                class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Order Food
+            </button>
+        </div>
+
+        <p id="errorMsg" class="text-red-500 mt-4 text-sm hidden">Error: No business ID found.</p>
+    </div>
+
+    <script>
+        // Get Business ID (supports new standard 'businessId' or legacy 'uid')
+        const urlParams = new URLSearchParams(window.location.search);
+        const businessId = urlParams.get('businessId') || urlParams.get('uid');
+
+        if (!businessId) {
+            document.getElementById('errorMsg').classList.remove('hidden');
+            document.getElementById('btnSurvey').disabled = true;
+            document.getElementById('btnMenu').disabled = true;
+            document.getElementById('btnSurvey').classList.add('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btnMenu').classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            document.getElementById('btnSurvey').onclick = () => window.location.href = `survey.html?businessId=${businessId}`;
+            document.getElementById('btnMenu').onclick = () => window.location.href = `menu.html?businessId=${businessId}`;
+        }
+    </script>
+</body>
+
+</html>

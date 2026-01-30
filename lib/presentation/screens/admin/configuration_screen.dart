@@ -7,7 +7,18 @@ import '../../providers/feedback_provider.dart';
 /// Configuration screen for building dynamic survey questions
 /// Allows adding, editing, and deleting survey questions
 class ConfigurationScreen extends StatefulWidget {
-  const ConfigurationScreen({super.key});
+  final String? titleOverride;
+  final String? itemLabel;
+  final String? addItemLabel;
+  final bool hideSurveyOnlyFields;
+
+  const ConfigurationScreen({
+    super.key,
+    this.titleOverride,
+    this.itemLabel,
+    this.addItemLabel,
+    this.hideSurveyOnlyFields = false,
+  });
 
   @override
   State<ConfigurationScreen> createState() => _ConfigurationScreenState();
@@ -15,6 +26,10 @@ class ConfigurationScreen extends StatefulWidget {
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
   late TextEditingController _surveyTitleController;
+  // Menu-specific controllers
+  late TextEditingController _taxRateController;
+  late TextEditingController _serviceChargeController;
+
   final ScrollController _scrollController = ScrollController();
   bool _isSaving = false;
 
@@ -26,12 +41,21 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     _surveyTitleController = TextEditingController(
       text: survey?.title ?? 'Untitled Survey'
     );
+    // Initialize menu fields
+    _taxRateController = TextEditingController(
+      text: survey?.taxRate?.toString() ?? '',
+    );
+    _serviceChargeController = TextEditingController(
+      text: survey?.serviceChargeRate?.toString() ?? '',
+    );
   }
 
   @override
   void dispose() {
     // Clean up title controller to prevent memory leaks
     _surveyTitleController.dispose();
+    _taxRateController.dispose();
+    _serviceChargeController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -71,6 +95,16 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   /// Updates survey title in provider state
   void _updateSurveyTitle() {
     context.read<FeedbackProvider>().updateEditingSurveyTitle(_surveyTitleController.text);
+  }
+
+  void _updateTaxRate() {
+    final value = double.tryParse(_taxRateController.text);
+    context.read<FeedbackProvider>().updateEditingSurveyTaxRate(value);
+  }
+
+  void _updateServiceChargeRate() {
+    final value = double.tryParse(_serviceChargeController.text);
+    context.read<FeedbackProvider>().updateEditingSurveyServiceChargeRate(value);
   }
 
   /// Validates survey has title and at least one question
@@ -199,7 +233,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Survey'),
+        title: Text(widget.titleOverride ?? 'Edit Survey'),
         actions: [
           if (_isSaving)
             const Padding(
@@ -233,16 +267,55 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _surveyTitleController,
-              decoration: const InputDecoration(
-                labelText: 'Survey Title',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.title),
+              decoration: InputDecoration(
+                labelText: widget.titleOverride ?? 'Survey Title',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.title),
               ),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               onChanged: (_) => _updateSurveyTitle(),
               enabled: !_isSaving,
             ),
           ),
+          
+          // Menu-Specific Fields (Tax & Service Charge)
+          if (widget.hideSurveyOnlyFields) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _taxRateController,
+                      decoration: const InputDecoration(
+                        labelText: 'Tax Rate (%)',
+                        border: OutlineInputBorder(),
+                        suffixText: '%',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => _updateTaxRate(),
+                      enabled: !_isSaving,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _serviceChargeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Service Charge (%)',
+                        border: OutlineInputBorder(),
+                        suffixText: '%',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => _updateServiceChargeRate(),
+                      enabled: !_isSaving,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           
           Expanded(
             child: questions.isEmpty
@@ -258,6 +331,8 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                         question: entry.value,
                         onDelete: () => _deleteQuestion(entry.key),
                         isDisabled: _isSaving,
+                        itemLabel: widget.itemLabel,
+                        isMenuMode: widget.hideSurveyOnlyFields,
                       );
                     }).toList(),
                   ),
@@ -284,16 +359,18 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             color: Colors.grey[400],
           ),
           const SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
-            'No questions yet',
+            'No ${widget.itemLabel?.toLowerCase() ?? 'questions'} yet',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[600],
             ),
           ),
           const SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Tap the + button to add your first question',
+            'Tap the + button to add your first ${widget.itemLabel?.toLowerCase() ?? 'question'}',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[500],
@@ -311,6 +388,8 @@ class _QuestionCard extends StatefulWidget {
   final QuestionModel question;
   final VoidCallback onDelete;
   final bool isDisabled;
+  final String? itemLabel;
+  final bool isMenuMode;
 
   const _QuestionCard({
     required Key key,
@@ -318,6 +397,8 @@ class _QuestionCard extends StatefulWidget {
     required this.question,
     required this.onDelete,
     this.isDisabled = false,
+    this.itemLabel,
+    this.isMenuMode = false,
   }) : super(key: key);
 
   @override
@@ -326,13 +407,23 @@ class _QuestionCard extends StatefulWidget {
 
 class _QuestionCardState extends State<_QuestionCard> {
   late TextEditingController _titleController;
+  late TextEditingController _priceController;
+  late TextEditingController _descriptionController;
   late List<TextEditingController> _optionControllers;
+  bool _isAvailable = true;
 
   @override
   void initState() {
     super.initState();
     // Initialize controllers with existing question data
     _titleController = TextEditingController(text: widget.question.title);
+    _priceController = TextEditingController(
+      text: widget.question.price?.toString() ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: widget.question.description ?? '',
+    );
+    _isAvailable = widget.question.isAvailable;
     _optionControllers = widget.question.options
         .map((opt) => TextEditingController(text: opt))
         .toList();
@@ -342,6 +433,9 @@ class _QuestionCardState extends State<_QuestionCard> {
   void dispose() {
     // Dispose all controllers to prevent memory leaks
     _titleController.dispose();
+    _titleController.dispose();
+    _priceController.dispose();
+    _descriptionController.dispose();
     for (var controller in _optionControllers) {
       controller.dispose();
     }
@@ -354,9 +448,17 @@ class _QuestionCardState extends State<_QuestionCard> {
     final provider = context.read<FeedbackProvider>();
     final updatedQuestion = widget.question.copyWith(
       title: _titleController.text,
+      price: double.tryParse(_priceController.text),
+      description: _descriptionController.text,
+      isAvailable: _isAvailable,
       options: _optionControllers.map((c) => c.text).toList(),
     );
     provider.updateSingleSurveyQuestion(widget.index, updatedQuestion);
+  }
+
+  void _toggleAvailable(bool value) {
+    setState(() => _isAvailable = value);
+    _saveQuestion();
   }
 
   /// Updates question type and saves to provider
@@ -403,16 +505,29 @@ class _QuestionCardState extends State<_QuestionCard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Question ${widget.index + 1}',
+                  '${widget.itemLabel ?? 'Question'} ${widget.index + 1}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: widget.isDisabled ? null : widget.onDelete,
-                  tooltip: 'Delete question',
+
+                Row(
+                  children: [
+                    if (widget.isMenuMode) ...[
+                      const Text('Available', style: TextStyle(fontSize: 12)),
+                      Switch(
+                        value: _isAvailable,
+                        onChanged: widget.isDisabled ? null : _toggleAvailable,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: widget.isDisabled ? null : widget.onDelete,
+                      tooltip: 'Delete ${widget.itemLabel?.toLowerCase() ?? 'question'}',
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -421,69 +536,97 @@ class _QuestionCardState extends State<_QuestionCard> {
             // Question title input field with auto save
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Question Title',
-                border: OutlineInputBorder(),
-                hintText: 'Enter your question here...',
+              decoration: InputDecoration(
+                labelText: '${widget.itemLabel ?? 'Question'} Title',
+                border: const OutlineInputBorder(),
+                hintText: 'Enter your ${widget.itemLabel?.toLowerCase() ?? 'question'} here...',
               ),
               onChanged: (_) => _saveQuestion(),
               enabled: !widget.isDisabled,
             ),
             const SizedBox(height: 16),
-            
-            // Question type dropdown selector
-            DropdownButtonFormField<QuestionType>(
-              initialValue: widget.question.type,
-              decoration: const InputDecoration(
-                labelText: 'Question Type',
-                border: OutlineInputBorder(),
+
+            // Price Field (Menu Mode Only)
+            if (widget.isMenuMode) ...[
+              TextField(
+                controller: _priceController,
+                decoration: const InputDecoration(
+                  labelText: 'Price',
+                  border: OutlineInputBorder(),
+                  prefixText: '\$ ', 
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => _saveQuestion(),
+                enabled: !widget.isDisabled,
               ),
-              items: QuestionType.values.map((type) {
-                return DropdownMenuItem(
-                  value: type,
-                  child: Text(_getQuestionTypeLabel(type)),
-                );
-              }).toList(),
-              onChanged: widget.isDisabled ? null : _updateType,
-            ),
-            
-            // Options section for single and multiple choice questions
-            if (_needsOptions()) ...[
               const SizedBox(height: 16),
-              const Text(
-                'Options:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              TextField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Additional Details (Optional)',
+                  border: OutlineInputBorder(),
+                  hintText: 'e.g., Ingredients, Allergens, Spice Level',
+                ),
+                maxLines: 2,
+                onChanged: (_) => _saveQuestion(),
+                enabled: !widget.isDisabled,
               ),
-              const SizedBox(height: 8),
-              ..._optionControllers.asMap().entries.map((entry) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: entry.value,
-                          decoration: InputDecoration(
-                            labelText: 'Option ${entry.key + 1}',
-                            border: const OutlineInputBorder(),
+              const SizedBox(height: 16),
+            ] else ...[
+              // Question type dropdown selector
+              DropdownButtonFormField<QuestionType>(
+                initialValue: widget.question.type,
+                decoration: InputDecoration(
+                  labelText: '${widget.itemLabel ?? 'Question'} Type',
+                  border: const OutlineInputBorder(),
+                ),
+                items: QuestionType.values.map((type) {
+                  return DropdownMenuItem(
+                    value: type,
+                    child: Text(_getQuestionTypeLabel(type)),
+                  );
+                }).toList(),
+                onChanged: widget.isDisabled ? null : _updateType,
+              ),
+              
+              // Options section for single and multiple choice questions
+              if (_needsOptions()) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Options:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ..._optionControllers.asMap().entries.map((entry) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: entry.value,
+                            decoration: InputDecoration(
+                              labelText: 'Option ${entry.key + 1}',
+                              border: const OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => _saveQuestion(),
+                            enabled: !widget.isDisabled,
                           ),
-                          onChanged: (_) => _saveQuestion(),
-                          enabled: !widget.isDisabled,
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: widget.isDisabled ? null : () => _removeOption(entry.key),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-              TextButton.icon(
-                onPressed: widget.isDisabled ? null : _addOption,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Option'),
-              ),
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle, color: Colors.red),
+                          onPressed: widget.isDisabled ? null : () => _removeOption(entry.key),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                TextButton.icon(
+                  onPressed: widget.isDisabled ? null : _addOption,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Option'),
+                ),
+              ],
             ],
           ],
         ),

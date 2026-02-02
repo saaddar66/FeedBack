@@ -98,6 +98,15 @@ class _OrderListScreenState extends State<OrderListScreen> {
     }
   }
 
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending': return Colors.orange;
+      case 'completed': return Colors.green;
+      case 'rejected': return Colors.red;
+      default: return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -207,7 +216,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: order.status == 'pending' ? Colors.orange[100] : Colors.green[100],
+                              color: _getStatusColor(order.status).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
@@ -215,7 +224,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
-                                color: order.status == 'pending' ? Colors.orange[900] : Colors.green[900],
+                                color: _getStatusColor(order.status),
                               ),
                             ),
                           ),
@@ -229,15 +238,20 @@ class _OrderListScreenState extends State<OrderListScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[100],
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '${item['quantity']}x',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                              SizedBox(
+                                width: 50,
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[100],
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${item['quantity']}x',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                    ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -247,9 +261,13 @@ class _OrderListScreenState extends State<OrderListScreen> {
                                   style: const TextStyle(fontSize: 15),
                                 ),
                               ),
-                              Text(
-                                '\$${(item['total'] as num).toStringAsFixed(2)}',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              SizedBox(
+                                width: 80,
+                                child: Text(
+                                  '\$${(item['total'] as num).toStringAsFixed(2)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                  textAlign: TextAlign.right,
+                                ),
                               ),
                             ],
                           ),
@@ -257,29 +275,61 @@ class _OrderListScreenState extends State<OrderListScreen> {
                       }).toList(),
                       const SizedBox(height: 16),
                       const Divider(),
+                      
+                      // Total Row aligned with items
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Total: \$${order.totalAmount.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 18, 
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                          const SizedBox(width: 50), // Matches Qty column
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Total',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              textAlign: TextAlign.right,
                             ),
                           ),
-                          if (order.status == 'pending')
+                          SizedBox(
+                            width: 80, // Matches Price column
+                            child: Text(
+                              '\$${order.totalAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 16, 
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Action Buttons Row (Reject in "Total's space" - left side)
+                      if (order.status == 'pending')
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _updateOrderStatus(order.id, 'rejected'),
+                              icon: const Icon(Icons.close, size: 18),
+                              label: const Text('Reject'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                              ),
+                            ),
                             ElevatedButton.icon(
                               onPressed: () => _updateOrderStatus(order.id, 'completed'),
-                              icon: const Icon(Icons.check),
-                              label: const Text('Complete Order'),
+                              icon: const Icon(Icons.check, size: 18),
+                              label: const Text('Complete'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                                 foregroundColor: Colors.white,
                               ),
                             ),
-                        ],
-                      ),
+                          ],
+                        ),
                     ],
                   ),
                 ),

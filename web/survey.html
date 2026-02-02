@@ -150,14 +150,21 @@
             if (data.questions) {
                 Object.entries(data.questions).forEach(([qid, q]) => {
                     if (!q || (typeof q === 'object' && q.value === false)) return;
-                    const qData = typeof q === 'object' ? q : { text: qid, type: 'text' };
+                    let qData;
+                    if (typeof q === 'object') {
+                        qData = q;
+                    } else if (typeof q === 'string') {
+                        qData = { text: q, type: 'text' };
+                    } else {
+                        qData = { text: qid, type: 'text' };
+                    }
 
                     const el = document.createElement('div');
                     el.className = 'bg-white p-5 rounded-xl shadow-sm border border-gray-100';
 
                     const label = document.createElement('label');
                     label.className = 'block font-bold text-gray-800 mb-3';
-                    label.textContent = qData.text || qData.question || qid;
+                    label.textContent = qData.title || qData.text || qData.question || qid;
                     el.appendChild(label);
 
                     let input;

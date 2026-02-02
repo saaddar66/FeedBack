@@ -117,8 +117,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         // Increment failed attempts for local UX feedback (though Firebase handles security)
         _failedAttempts++;
-         if (_failedAttempts >= 5) {
-          _lockoutEndTime = DateTime.now().add(const Duration(minutes: 5));
+        if (_failedAttempts >= 5 && _lockoutEndTime == null) {
+          _lockoutEndTime = DateTime.now().add(const Duration(minutes: 2));
         }
         
         _showErrorSnackbar(e.toString());

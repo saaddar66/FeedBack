@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
 import '../../../data/models/survey_models.dart';
 import '../../providers/feedback_provider.dart';
 
@@ -26,10 +29,6 @@ class ConfigurationScreen extends StatefulWidget {
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
   late TextEditingController _surveyTitleController;
-  // Menu-specific controllers
-  late TextEditingController _taxRateController;
-  late TextEditingController _serviceChargeController;
-
   final ScrollController _scrollController = ScrollController();
   bool _isSaving = false;
 
@@ -41,21 +40,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     _surveyTitleController = TextEditingController(
       text: survey?.title ?? 'Untitled Survey'
     );
-    // Initialize menu fields
-    _taxRateController = TextEditingController(
-      text: survey?.taxRate?.toString() ?? '',
-    );
-    _serviceChargeController = TextEditingController(
-      text: survey?.serviceChargeRate?.toString() ?? '',
-    );
   }
 
   @override
   void dispose() {
     // Clean up title controller to prevent memory leaks
     _surveyTitleController.dispose();
-    _taxRateController.dispose();
-    _serviceChargeController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -97,15 +87,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     context.read<FeedbackProvider>().updateEditingSurveyTitle(_surveyTitleController.text);
   }
 
-  void _updateTaxRate() {
-    final value = double.tryParse(_taxRateController.text);
-    context.read<FeedbackProvider>().updateEditingSurveyTaxRate(value);
-  }
 
-  void _updateServiceChargeRate() {
-    final value = double.tryParse(_serviceChargeController.text);
-    context.read<FeedbackProvider>().updateEditingSurveyServiceChargeRate(value);
-  }
 
   /// Validates survey has title and at least one question
   bool _validateSurvey() {
@@ -278,44 +260,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             ),
           ),
           
-          // Menu-Specific Fields (Tax & Service Charge)
-          if (widget.hideSurveyOnlyFields) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _taxRateController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tax Rate (%)',
-                        border: OutlineInputBorder(),
-                        suffixText: '%',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => _updateTaxRate(),
-                      enabled: !_isSaving,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextField(
-                      controller: _serviceChargeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Service Charge (%)',
-                        border: OutlineInputBorder(),
-                        suffixText: '%',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => _updateServiceChargeRate(),
-                      enabled: !_isSaving,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
+
           
           Expanded(
             child: questions.isEmpty
@@ -340,11 +285,186 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _isSaving ? null : _addQuestion,
+        key: _fabKey,
+        onPressed: _isSaving ? null : () => _showAddOptions(),
         backgroundColor: _isSaving ? Colors.grey : Colors.blue,
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  final GlobalKey _fabKey = GlobalKey();
+
+  void _showAddOptions() {
+    final RenderBox? button = _fabKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+    
+    if (button == null || overlay == null) return;
+
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        const PopupMenuItem<String>(
+          value: 'manual',
+          child: Row(
+            children: [
+              Icon(Icons.add, color: Colors.blue),
+              SizedBox(width: 12),
+              Text('Add Manually'),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'csv',
+          child: Row(
+            children: [
+              Icon(Icons.upload_file, color: Colors.green),
+              SizedBox(width: 12),
+              Text('Import from CSV'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'manual') {
+        _addQuestion();
+      } else if (value == 'csv') {
+        _importCsv();
+      }
+    });
+  }
+
+  Future<void> _importCsv() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final fileBytes = result.files.first.bytes;
+        final content = utf8.decode(fileBytes!);
+        
+        // Parse CSV
+        final List<List<dynamic>> rows = const CsvToListConverter().convert(content);
+        
+        if (rows.length < 2) {
+          _showError('CSV file is empty or missing content');
+          return;
+        }
+
+        // Headers expected: title, type, options, price, description, isAvailable
+        // We act forgivingly and just try to find a title column at least
+        final headers = rows.first.map((e) => e.toString().toLowerCase().trim()).toList();
+        final titleIndex = headers.indexWhere((h) => h.contains('title') || h.contains('question') || h.contains('name'));
+        
+        if (titleIndex == -1) {
+          _showError('CSV must have a "Title" or "Question" column');
+          return;
+        }
+        
+        // Map other columns if they exist
+        final typeIndex = headers.indexOf('type');
+        final optionsIndex = headers.indexOf('options');
+        final priceIndex = headers.indexOf('price');
+        final descriptionIndex = headers.indexOf('description');
+        final availableIndex = headers.indexWhere((h) => h.contains('available'));
+
+        int importedCount = 0;
+        
+        for (int i = 1; i < rows.length; i++) {
+          final row = rows[i];
+          if (row.length <= titleIndex) continue;
+          
+          final title = row[titleIndex].toString().trim();
+          if (title.isEmpty) continue;
+
+          // Parse Type
+          QuestionType type = QuestionType.text;
+          if (typeIndex != -1 && row.length > typeIndex) {
+            final typeStr = row[typeIndex].toString().toLowerCase();
+            if (typeStr.contains('rating')) type = QuestionType.rating;
+            else if (typeStr.contains('single')) type = QuestionType.singleChoice;
+            else if (typeStr.contains('multi')) type = QuestionType.multipleChoice;
+          }
+
+          // Parse Options
+          List<String> options = [];
+          if (optionsIndex != -1 && row.length > optionsIndex) {
+            final optStr = row[optionsIndex].toString();
+            if (optStr.isNotEmpty) {
+              // Try comma or pipe separator
+              options = optStr.split(optStr.contains('|') ? '|' : ',')
+                  .map((e) => e.trim())
+                  .where((e) => e.isNotEmpty)
+                  .toList();
+            }
+          }
+
+          // Parse Price
+          double? price;
+          if (priceIndex != -1 && row.length > priceIndex) {
+            price = double.tryParse(row[priceIndex].toString().replaceAll('\$', ''));
+          }
+
+          // Parse Description
+          String? description;
+          if (descriptionIndex != -1 && row.length > descriptionIndex) {
+            description = row[descriptionIndex].toString();
+          }
+
+          // Parse Availability
+          bool isAvailable = true;
+          if (availableIndex != -1 && row.length > availableIndex) {
+            final val = row[availableIndex].toString().toLowerCase();
+            isAvailable = val == 'true' || val == 'yes' || val == '1';
+          }
+
+          // Add to provider
+          context.read<FeedbackProvider>().addSurveyQuestion(
+            QuestionModel(
+              id: DateTime.now().millisecondsSinceEpoch.toString() + i.toString(),
+              title: title,
+              type: type,
+              options: options,
+              price: price,
+              description: description,
+              isAvailable: isAvailable,
+            ),
+          );
+          importedCount++;
+        }
+
+        if (importedCount > 0) {
+          _showSuccess('Imported $importedCount questions successfully');
+          // Scroll to bottom
+           WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          });
+        } else {
+          _showError('No valid questions found in CSV');
+        }
+      }
+    } catch (e) {
+      _showError('Error importing CSV: $e');
+    }
   }
 
   /// Builds empty state when no questions exist yet

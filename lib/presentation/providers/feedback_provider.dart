@@ -169,21 +169,7 @@ class FeedbackProvider with ChangeNotifier {
     }
   }
 
-  /// Updates tax rate for the editing survey/menu
-  void updateEditingSurveyTaxRate(double? rate) {
-    if (_editingSurvey != null) {
-      _editingSurvey = _editingSurvey!.copyWith(taxRate: rate);
-      notifyListeners();
-    }
-  }
 
-  /// Updates service charge rate for the editing survey/menu
-  void updateEditingSurveyServiceChargeRate(double? rate) {
-    if (_editingSurvey != null) {
-      _editingSurvey = _editingSurvey!.copyWith(serviceChargeRate: rate);
-      notifyListeners();
-    }
-  }
 
   // --- Question Manipulation (Operates on _editingSurvey) ---
 

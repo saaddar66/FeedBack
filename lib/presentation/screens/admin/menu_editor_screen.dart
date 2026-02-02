@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
 import '../../providers/menu_provider.dart';
 import '../../../data/models/menu_models.dart';
 
@@ -118,6 +121,109 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
     }
   }
 
+  Future<void> _importCsv() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      if (file.bytes == null) return;
+
+      final csvContent = utf8.decode(file.bytes!, allowMalformed: true);
+      final rows = const CsvToListConverter().convert(csvContent);
+
+      if (rows.isEmpty) return;
+
+      // Extract section info from first valid row
+      bool sectionUpdated = false;
+      int importedCount = 0;
+      final provider = context.read<MenuProvider>();
+
+      for (var row in rows) {
+        if (row.isEmpty) continue;
+        
+        // Expected format: section_title, section_desc, dish_name, dish_desc, price, is_available
+        if (row.length < 3) continue; // Minimum 3 columns required (title, desc, dish_name)
+
+        final sectionTitle = row[0].toString().trim();
+        final sectionDesc = row.length > 1 ? row[1].toString().trim() : '';
+        final dishName = row[2].toString().trim();
+        final dishDesc = row.length > 3 ? row[3].toString().trim() : '';
+        
+        // Parse dish price
+        double price = 0.0;
+        if (row.length > 4) {
+          final priceRaw = row[4];
+          if (priceRaw is num) {
+            price = priceRaw.toDouble();
+          } else {
+            price = double.tryParse(priceRaw.toString().replaceAll('\$', '').trim()) ?? 0.0;
+          }
+        }
+
+        // Parse availability
+        bool isAvailable = true;
+        if (row.length > 5) {
+          final availRaw = row[5].toString().toLowerCase().trim();
+          isAvailable = availRaw != 'false' && availRaw != '0' && availRaw != 'no';
+        }
+
+        // Update section info once
+        if (!sectionUpdated) {
+          if (sectionTitle.isNotEmpty) _titleController.text = sectionTitle;
+          if (sectionDesc.isNotEmpty) _descriptionController.text = sectionDesc;
+          
+          provider.updateEditingMenuTitle(_titleController.text);
+          provider.updateEditingMenuDescription(_descriptionController.text);
+          sectionUpdated = true;
+        }
+
+        if (dishName.isEmpty) continue;
+
+        final newDish = MenuDish(
+          id: DateTime.now().millisecondsSinceEpoch.toString() + importedCount.toString(),
+          name: dishName,
+          description: dishDesc,
+          price: price,
+          isAvailable: isAvailable,
+        );
+
+        provider.addDish(newDish);
+        importedCount++;
+      }
+
+      if (importedCount > 0) {
+        setState(() {
+          _currentSection = provider.editingMenu;
+          _hasUnsavedChanges = true;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Imported $importedCount dishes from CSV'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error importing CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _addDish() {
     _showDishDialog(null, null);
   }
@@ -150,6 +256,17 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
 
     final provider = context.read<MenuProvider>();
     provider.removeDish(index);
+    
+    setState(() {
+      _currentSection = provider.editingMenu;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleDishVisibility(int index, MenuDish dish) {
+    final updatedDish = dish.copyWith(isAvailable: !dish.isAvailable);
+    final provider = context.read<MenuProvider>();
+    provider.updateDish(index, updatedDish);
     
     setState(() {
       _currentSection = provider.editingMenu;
@@ -277,6 +394,11 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
           ),
           title: Text(_currentSection?.id.isEmpty ?? true ? 'New Menu Section' : 'Edit Menu Section'),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.upload_file),
+              onPressed: _importCsv,
+              tooltip: 'Import from CSV',
+            ),
             if (_hasUnsavedChanges)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -416,18 +538,28 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
                             ),
                             title: Text(
                               dish.name.isEmpty ? 'Unnamed Dish' : dish.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: dish.isAvailable ? Colors.black : Colors.grey,
+                                decoration: dish.isAvailable ? null : TextDecoration.lineThrough,
+                              ),
                             ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (dish.description.isNotEmpty)
-                                  Text(dish.description),
+                                  Text(
+                                    dish.description,
+                                    style: TextStyle(
+                                      color: dish.isAvailable ? null : Colors.grey,
+                                    ),
+                                  ),
                                 Text(
                                   '\$${dish.price.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    color: Colors.green,
+                                  style: TextStyle(
+                                    color: dish.isAvailable ? Colors.green : Colors.grey,
                                     fontWeight: FontWeight.w600,
+                                    decoration: dish.isAvailable ? null : TextDecoration.lineThrough,
                                   ),
                                 ),
                               ],
@@ -435,6 +567,15 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                IconButton(
+                                  icon: Icon(
+                                    dish.isAvailable ? Icons.visibility : Icons.visibility_off,
+                                    size: 20,
+                                    color: dish.isAvailable ? Colors.green : Colors.grey,
+                                  ),
+                                  onPressed: () => _toggleDishVisibility(index, dish),
+                                  tooltip: dish.isAvailable ? 'Hide Dish' : 'Show Dish',
+                                ),
                                 IconButton(
                                   icon: const Icon(Icons.edit, size: 20),
                                   onPressed: () => _editDish(dish, index),

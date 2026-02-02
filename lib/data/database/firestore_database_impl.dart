@@ -273,27 +273,50 @@ class FirestoreDatabaseImpl implements BaseDatabase {
   Future<void> activateSurvey(String surveyId) async {
     await _ensureInitialized();
     
-    // Get the target survey
-    final surveys = await getAllSurveys();
-    final targetSurvey = surveys.firstWhere((s) => s.id == surveyId);
-    final targetCreatorId = targetSurvey.creatorId;
-    final shouldActivate = !targetSurvey.isActive;
-    
-    // Get all surveys by the same creator
-    final userSurveys = surveys.where((s) => s.creatorId == targetCreatorId).toList();
-    
-    // Batch update
-    final batch = _firestore!.batch();
-    
-    for (var survey in userSurveys) {
-      final isActive = shouldActivate && survey.id == surveyId;
-      batch.update(
-        _firestore!.collection('surveys').doc(survey.id),
-        {'isActive': isActive},
-      );
+    try {
+      // 1. Fetch the specific survey to be toggled directly
+      // This avoids "Query matches all documents" rule violation (PERMISSION_DENIED)
+      final docRef = _firestore!.collection('surveys').doc(surveyId);
+      final docSnapshot = await docRef.get();
+      
+      if (!docSnapshot.exists) {
+        developer.log('Survey not found: $surveyId', name: 'FirestoreDatabaseImpl');
+        return;
+      }
+
+      final data = docSnapshot.data()!;
+      data['id'] = docSnapshot.id;
+      final targetSurvey = SurveyForm.fromMap(data);
+      
+      final targetCreatorId = targetSurvey.creatorId;
+      final shouldActivate = !targetSurvey.isActive;
+      
+      final batch = _firestore!.batch();
+
+      // Update the target survey
+      batch.update(docRef, {'isActive': shouldActivate});
+
+      // If we are activating this one, find all OTHER active surveys by this creator and deactivate them
+      if (shouldActivate && targetCreatorId != null) {
+         // This filtered query matches security rules: creatorId == auth.uid OR isActive == true
+         final otherActiveSurveysSnapshot = await _firestore!
+            .collection('surveys')
+            .where('creatorId', isEqualTo: targetCreatorId)
+            .where('isActive', isEqualTo: true)
+            .get();
+
+         for (var doc in otherActiveSurveysSnapshot.docs) {
+           if (doc.id != surveyId) {
+             batch.update(doc.reference, {'isActive': false});
+           }
+         }
+      }
+      
+      await batch.commit();
+    } catch (e) {
+      developer.log('Error activating survey: $e', name: 'FirestoreDatabaseImpl', error: e);
+      rethrow;
     }
-    
-    await batch.commit();
   }
 
   @override

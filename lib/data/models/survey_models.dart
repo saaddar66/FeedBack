@@ -105,8 +105,6 @@ class SurveyForm {
   List<QuestionModel> questions;
   final DateTime createdAt;
   final String? creatorId;
-  final double? taxRate;           // Tax percentage for this menu section
-  final double? serviceChargeRate; // Service charge percentage
 
   SurveyForm({
     required this.id,
@@ -115,8 +113,6 @@ class SurveyForm {
     List<QuestionModel>? questions,
     DateTime? createdAt,
     this.creatorId,
-    this.taxRate,
-    this.serviceChargeRate,
   }) : questions = questions ?? [],
        createdAt = createdAt ?? DateTime.now();
 
@@ -125,8 +121,6 @@ class SurveyForm {
     bool? isActive,
     List<QuestionModel>? questions,
     String? creatorId,
-    double? taxRate,
-    double? serviceChargeRate,
   }) {
     return SurveyForm(
       id: id,
@@ -135,8 +129,6 @@ class SurveyForm {
       questions: questions ?? this.questions,
       createdAt: createdAt,
       creatorId: creatorId ?? this.creatorId,
-      taxRate: taxRate ?? this.taxRate,
-      serviceChargeRate: serviceChargeRate ?? this.serviceChargeRate,
     );
   }
 
@@ -148,8 +140,6 @@ class SurveyForm {
       'questions': questions.map((q) => q.toMap()).toList(),
       'createdAt': createdAt.toIso8601String(),
       'creatorId': creatorId,
-      'taxRate': taxRate,
-      'serviceChargeRate': serviceChargeRate,
     };
   }
 
@@ -198,8 +188,6 @@ class SurveyForm {
       questions: parsedQuestions,
       createdAt: _parseDateTime(map['createdAt']),
       creatorId: map['creatorId']?.toString(),
-      taxRate: (map['taxRate'] is num) ? (map['taxRate'] as num).toDouble() : null,
-      serviceChargeRate: (map['serviceChargeRate'] is num) ? (map['serviceChargeRate'] as num).toDouble() : null,
     );
   }
 

@@ -91,7 +91,11 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
     } else {
       // Extract answer fields from root (backwards compatibility)
       answers = <String, dynamic>{};
-      final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+      final metadataFields = {
+        'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers',
+        'createdAt', 'updatedAt', 'timestamp', 'userId', 'uid', 'surveyId',
+        'created_at', 'updated_at', 'owner_id', 'user_id', 'survey_id', 'submitted_at'
+      };
       response.forEach((key, value) {
         if (!metadataFields.contains(key)) {
           answers[key.toString()] = value;
@@ -484,7 +488,11 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
     } else {
       // If no 'answers' key, extract answer fields from root (backwards compatibility)
       answers = <String, dynamic>{};
-      final metadataFields = {'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers'};
+      final metadataFields = {
+        'id', 'submittedAt', 'ownerId', 'userName', 'userEmail', 'answers',
+        'createdAt', 'updatedAt', 'timestamp', 'userId', 'uid', 'surveyId',
+        'created_at', 'updated_at', 'owner_id', 'user_id', 'survey_id', 'submitted_at'
+      };
       response.forEach((key, value) {
         if (!metadataFields.contains(key)) {
           answers[key] = value;

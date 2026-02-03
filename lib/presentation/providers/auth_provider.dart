@@ -90,13 +90,20 @@ class AuthProvider with ChangeNotifier {
     }
 
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      final credential = await _auth.signInWithEmailAndPassword(email: email, password: password);
+      
+      // Fix: Explicitly await user profile load to ensure _currentUser is set 
+      // before returning to the UI. This prevents "Login twice" issues where 
+      // the UI navigates to Dashboard before the profile stream updates.
+      if (credential.user != null) {
+        await _loadUserProfile(credential.user!);
+      }
       
       // 2. Login successful, reset counters
       await prefs.remove('auth_failed_attempts');
       await prefs.remove('auth_lockout_until');
       
-      // Listener in initAuth will handle setting _currentUser
+      // Listener in initAuth will also fire, but we are now guaranteed to have state.
     } on FirebaseAuthException catch (e) {
       // 3. Login failed, handle lockout logic
       if (e.code == 'invalid-credential' || e.code == 'user-not-found' || e.code == 'wrong-password') {

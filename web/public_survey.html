@@ -421,13 +421,13 @@
 
         try {
           const formData = new FormData(e.target);
-          const data = Object.fromEntries(formData.entries());
+          const answers = Object.fromEntries(formData.entries());
 
           await addDoc(collection(db, 'survey_responses'), {
-            ...data,
-            owner_id: ownerId,
-            survey_id: activeSurveyId,
-            submitted_at: serverTimestamp()
+            answers: answers,
+            ownerId: ownerId,
+            surveyId: activeSurveyId,
+            submittedAt: new Date().toISOString() // Send as ISO string to match Flutter app expectations
           });
 
           // Move to feedback
@@ -454,8 +454,8 @@
           await addDoc(collection(db, 'feedback'), {
             ...data,
             rating: parseInt(data.rating),
-            owner_id: ownerId,
-            created_at: new Date().toISOString() // Use ISO string matching Flutter model
+            ownerId: ownerId,
+            createdAt: new Date().toISOString() // Use ISO string matching Flutter model
           });
 
           showSuccess('Thank you for your feedback!');

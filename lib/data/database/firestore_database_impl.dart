@@ -233,18 +233,46 @@ class FirestoreDatabaseImpl implements BaseDatabase {
     try {
       Query<Map<String, dynamic>> query = _firestore!.collection('surveys');
       
+      // Fix for PERMISSION_DENIED:
+      // Firestore Rules require either:
+      // 1. resource.data.isActive == true (Public)
+      // 2. resource.data.creatorId == auth.uid (Owner)
+      
       if (creatorId != null) {
-        query = query.where('creatorId', isEqualTo: creatorId);
+         // Case 2: We are looking for specific creator's surveys. 
+         // If we are that creator (auth.uid == creatorId), we can see everything.
+         // If we are public user looking at a creator, we must ALSO filter by isActive=true
+         // However, the rule says `allow read: if resource.data.isActive == true || isOwner(...)`.
+         // So a public query for `where('creatorId', isEqualTo: X).where('isActive', isEqualTo: true)` should pass.
+         
+         // Ideally, we should detect if we are the owner or public.
+         // But for simplicity in this public-facing method:
+         query = query.where('creatorId', isEqualTo: creatorId);
+      } else {
+         // Case 1: Fetching "all" surveys? We should probably only fetch active ones if no creator specified.
+         query = query.where('isActive', isEqualTo: true);
       }
       
       final snapshot = await query.get();
       
+      developer.log('getAllSurveys: Found ${snapshot.docs.length} surveys for creatorId: $creatorId', name: 'FirestoreDatabaseImpl');
+
       List<SurveyForm> surveys = [];
       for (var doc in snapshot.docs) {
         try {
           final data = doc.data();
           data['id'] = doc.id;
-          surveys.add(SurveyForm.fromMap(data));
+          final survey = SurveyForm.fromMap(data);
+          
+          // Double check visibility in memory just in case
+          if (creatorId != null && !survey.isActive) {
+             // If we fetched inactive surveys, we must be the owner.
+             // If this was a public request, Query would fail before reaching here if Rule logic was strict.
+             // But let's log it.
+             developer.log('Loaded inactive survey (Owner Mode?): ${survey.title}', name: 'FirestoreDatabaseImpl');
+          }
+
+          surveys.add(survey);
         } catch (e) {
           developer.log('Error parsing survey ${doc.id}: $e', name: 'FirestoreDatabaseImpl');
         }
@@ -252,9 +280,35 @@ class FirestoreDatabaseImpl implements BaseDatabase {
       
       return surveys;
     } catch (e) {
+      // If we get PERMISSION_DENIED here with creatorId set, it likely means we are Public
+      // trying to view Inactive surveys (which is forbidden).
+      // We should retry with isActive=true.
+      if (e.toString().contains('PERMISSION_DENIED') && creatorId != null) {
+          developer.log('Permission denied fetching all surveys for $creatorId. Retrying with isActive=true filter.', name: 'FirestoreDatabaseImpl');
+          return _getPublicSurveysForCreator(creatorId);
+      }
+      
       developer.log('Error fetching surveys: $e', name: 'FirestoreDatabaseImpl', error: e);
       return [];
     }
+  }
+
+  Future<List<SurveyForm>> _getPublicSurveysForCreator(String creatorId) async {
+      try {
+        final query = _firestore!.collection('surveys')
+          .where('creatorId', isEqualTo: creatorId)
+          .where('isActive', isEqualTo: true);
+          
+         final snapshot = await query.get();
+         return snapshot.docs.map((doc) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            return SurveyForm.fromMap(data);
+         }).toList();
+      } catch (e) {
+         developer.log('Error fetching public surveys retry: $e', name: 'FirestoreDatabaseImpl');
+         return [];
+      }
   }
 
   @override
@@ -322,16 +376,62 @@ class FirestoreDatabaseImpl implements BaseDatabase {
   @override
   Future<SurveyForm?> getActiveSurvey({String? creatorId}) async {
     await _ensureInitialized();
-    
-    // We fetch all surveys (or filtered by creator) and find the active one in memory
-    // This avoids needing a composite index on [creatorId, isActive]
-    final surveys = await getAllSurveys(creatorId: creatorId);
-    
+    if (creatorId == null) return null;
+
     try {
-      return surveys.firstWhere((s) => s.isActive);
+      // Strategy 1: Smart Query (Requires Composite Index: creatorId + isActive)
+      // This is the most efficient and rule-compliant way.
+      try {
+        final query = _firestore!.collection('surveys')
+            .where('creatorId', isEqualTo: creatorId)
+            .where('isActive', isEqualTo: true)
+            .limit(1);
+
+        final snapshot = await query.get();
+        if (snapshot.docs.isNotEmpty) {
+          final doc = snapshot.docs.first;
+          final data = doc.data();
+          data['id'] = doc.id;
+          return SurveyForm.fromMap(data);
+        }
+      } catch (e) {
+        // If Strategy 1 fails (likely FAILED_PRECONDITION due to missing index),
+        // we fall back to Strategy 2.
+        developer.log('Smart query failed (likely missing index), trying fallback: $e', name: 'FirestoreDatabaseImpl');
+               
+        // Strategy 2: Broad Query (isActive only) + Client-side filtering
+        // This scans all active surveys but guarantees a result if the survey exists.
+        // It satisfies the "public read active" rule.
+        final fallbackQuery = _firestore!.collection('surveys')
+            .where('isActive', isEqualTo: true);
+            
+         final snapshot = await fallbackQuery.get();
+         
+         // Filter for the specific creator in memory
+         final match = snapshot.docs
+             .map((doc) {
+                final data = doc.data();
+                data['id'] = doc.id;
+                return SurveyForm.fromMap(data); 
+             })
+             .firstWhere(
+                (s) => s.creatorId == creatorId, 
+                orElse: () => throw Exception('Not found')
+             );
+             
+         return match;
+      }
     } catch (e) {
-      return null;
+       // If both startgies fail, or no match found in Strategy 2
+       if (e.toString().contains('Not found')) {
+         developer.log('No active survey found for creator: $creatorId', name: 'FirestoreDatabaseImpl');
+       } else {
+         developer.log('Error getting active survey: $e', name: 'FirestoreDatabaseImpl', error: e);
+       }
+       return null;
     }
+    
+    return null;
   }
 
   @override

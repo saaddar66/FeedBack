@@ -65,12 +65,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   String _getQrCodeUrl(BuildContext context) {
     String baseUrl;
     if (kIsWeb) {
-      // For web, use the current origin + /#/public route
+      // For web, use the current origin + /public_survey.html
       final uri = Uri.base;
-      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/#/public';
+      baseUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/public_survey.html';
     } else {
-      // For mobile/desktop, point to the hosted web app's public route
-      baseUrl = 'https://feedy-cebf6.web.app/#/public'; 
+      // For mobile/desktop, point to the hosted web app's public page
+      baseUrl = 'https://feedy-cebf6.web.app/public_home.html'; 
     }
 
     final ownerId = _getOwnerId(context);
@@ -212,12 +212,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      // Give Feedback button at bottom center
+                      // Get Started button at bottom center
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: () {
-                            String route = '/survey';
+                            String route = '/public';
                             final ownerId = _getOwnerId(context);
                             if (ownerId != null) {
                               route += '?uid=$ownerId';
@@ -229,7 +229,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             backgroundColor: Colors.blue,
                           ),
                           child: const Text(
-                            'Give Feedback',
+                            'Get Started',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,

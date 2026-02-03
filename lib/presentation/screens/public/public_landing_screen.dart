@@ -14,6 +14,22 @@ class PublicLandingScreen extends StatelessWidget {
     final ownerId = state.uri.queryParameters['uid'];
     
     return Scaffold(
+      extendBodyBehindAppBar: true, // Allow body gradient to show behind app bar
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            // Navigate back to Welcome Screen
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

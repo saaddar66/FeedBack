@@ -69,31 +69,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Button to go to the original General Feedback form
-              ElevatedButton.icon(
-                onPressed: () {
-                  // Preserve the uid query parameter when navigating to feedback
-                  final state = GoRouterState.of(context);
-                  final uid = state.uri.queryParameters['uid'];
-                  if (uid != null && uid.isNotEmpty) {
-                    context.go('/feedback?uid=$uid');
-                  } else {
-                    context.go('/feedback');
-                  }
-                },
-                icon: const Icon(Icons.feedback_outlined),
-                label: const Text('Submit General Feedback'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo.shade50,
-                  foregroundColor: Colors.indigo,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  elevation: 0,
-                  side: const BorderSide(color: Colors.indigo, width: 1),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 16),
+
               
               const Text(
                 'Please answer the following questions:',
@@ -251,14 +227,10 @@ class _SurveyScreenState extends State<SurveyScreen> {
       final state = GoRouterState.of(context);
       final ownerId = state.uri.queryParameters['uid'];
       
-      // We need to ensure the provider uses this ID when submitting
-      // Currently submitCurrentAnswers uses _currentUserId from provider state.
-      // We must ensure provider state matches the URL uid for public users.
-      if (ownerId != null) {
-         context.read<FeedbackProvider>().setCurrentUser(ownerId);
-      }
-      
-      await context.read<FeedbackProvider>().submitCurrentAnswers();
+      // Directly pass ownerId to submission without setting provider state
+      // This prevents triggering admin-level data fetches (loadSurveys/loadFeedback)
+      // which would fail with PERMISSION_DENIED for public users.
+      await context.read<FeedbackProvider>().submitCurrentAnswers(ownerIdOverride: ownerId);
       
       if (!mounted) return;
       
@@ -271,7 +243,12 @@ class _SurveyScreenState extends State<SurveyScreen> {
       
       // Navigate BEFORE clearing state (although state is cleared in provider)
       // Actually provider clears it, so we rely on that.
-      context.go('/');
+      // Automatically navigate to feedback form after survey
+      if (ownerId != null && ownerId.isNotEmpty) {
+        context.go('/feedback?uid=$ownerId');
+      } else {
+        context.go('/feedback');
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

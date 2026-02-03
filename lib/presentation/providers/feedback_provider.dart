@@ -246,16 +246,16 @@ class FeedbackProvider with ChangeNotifier {
   }
 
   /// Submits survey answers
-  Future<void> submitSurveyAnswers(Map<String, dynamic> answers) async {
-    await _repository.submitSurveyResponse(answers, ownerId: _currentUserId);
+  Future<void> submitSurveyAnswers(Map<String, dynamic> answers, {String? ownerIdOverride}) async {
+    await _repository.submitSurveyResponse(answers, ownerId: ownerIdOverride ?? _currentUserId);
   }
 
   /// Submits the currently accumulated survey answers
-  Future<void> submitCurrentAnswers() async {
+  Future<void> submitCurrentAnswers({String? ownerIdOverride}) async {
     if (_currentSurveyAnswers.isEmpty) {
       throw Exception('Please answer at least one question');
     }
-    await submitSurveyAnswers(Map.from(_currentSurveyAnswers));
+    await submitSurveyAnswers(Map.from(_currentSurveyAnswers), ownerIdOverride: ownerIdOverride);
     resetSurveyAnswers();
   }
 

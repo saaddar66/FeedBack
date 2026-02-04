@@ -11,6 +11,8 @@ import '../../../utils/csv_exporter.dart';
 
 /// Production-ready screen displaying all survey responses with proper states
 /// Shows expandable cards with question answers and submission timestamps
+enum SortOrder { newest, oldest }
+
 class SurveyResponseListScreen extends StatefulWidget {
   const SurveyResponseListScreen({super.key});
 
@@ -24,6 +26,7 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
   String _errorMessage = '';
   final Map<String, String> _questionTitleCache = {}; // Cache question ID to title mapping
   String? _selectedSurveyId; // Selected survey ID for filtering
+  SortOrder _currentSortOrder = SortOrder.newest;
 
   @override
   void initState() {
@@ -129,6 +132,37 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
       final surveyId = _getSurveyIdForResponse(response);
       return surveyId == _selectedSurveyId;
     }).toList();
+  }
+
+  /// Sorts responses based on timestamp fields
+  List<Map<String, dynamic>> _getSortedResponses(List<Map<String, dynamic>> responses) {
+    if (responses.isEmpty) return responses;
+
+    final sortedList = List<Map<String, dynamic>>.from(responses);
+    
+    sortedList.sort((a, b) {
+      DateTime? getTime(Map<String, dynamic> map) {
+        // Try common timestamp keys
+        final keys = ['submittedAt', 'createdAt', 'timestamp', 'created_at', 'submitted_at'];
+        for (final key in keys) {
+          final val = map[key];
+          if (val != null) {
+            final parsed = DateTime.tryParse(val.toString());
+            if (parsed != null) return parsed;
+          }
+        }
+        return null;
+      }
+
+      final timeA = getTime(a) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB = getTime(b) ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+        return _currentSortOrder == SortOrder.newest
+            ? timeB.compareTo(timeA)
+            : timeA.compareTo(timeB);
+    });
+
+    return sortedList;
   }
 
   /// Deletes single response with confirmation dialog
@@ -327,6 +361,40 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
               onPressed: _showFilterDialog,
               tooltip: 'Filter by Survey',
             ),
+          // Sort button
+          if (!_isLoading)
+            PopupMenuButton<SortOrder>(
+              icon: const Icon(Icons.sort),
+              tooltip: 'Sort Responses',
+              initialValue: _currentSortOrder,
+              onSelected: (SortOrder item) {
+                setState(() {
+                  _currentSortOrder = item;
+                });
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<SortOrder>>[
+                const PopupMenuItem<SortOrder>(
+                  value: SortOrder.newest,
+                  child: Row(
+                    children: [
+                      Icon(Icons.arrow_downward, size: 20),
+                      SizedBox(width: 8),
+                      Text('Newest First'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<SortOrder>(
+                  value: SortOrder.oldest,
+                  child: Row(
+                    children: [
+                      Icon(Icons.arrow_upward, size: 20),
+                      SizedBox(width: 8),
+                      Text('Oldest First'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           // AI Analyze button
             if (!_isLoading && responses.isNotEmpty)
               IconButton(
@@ -384,7 +452,7 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
                 ],
               ),
             ),
-          Expanded(child: _buildBody(_getFilteredResponses(responses))),
+          Expanded(child: _buildBody(_getSortedResponses(_getFilteredResponses(responses)))),
         ],
       ),
     );

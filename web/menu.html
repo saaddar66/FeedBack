@@ -285,7 +285,8 @@
 
                 const total = orderItems.reduce((a, b) => a + b.total, 0);
 
-                await addDoc(collection(db, 'orders'), {
+                // Redirect to status page
+                const docRef = await addDoc(collection(db, 'orders'), {
                     ownerId,
                     tableNumber: table,
                     items: orderItems,
@@ -295,8 +296,13 @@
                 });
 
                 modal.classList.add('hidden');
-                document.getElementById('successTable').textContent = table;
-                document.getElementById('successOverlay').classList.remove('hidden');
+
+                // Clear cart (optional, but good practice if leaving page)
+                cart = {};
+                renderCartBar();
+
+                // Redirect
+                window.location.href = `order_status.html?orderId=${docRef.id}&businessId=${ownerId}`;
 
             } catch (e) {
                 alert(e.message);

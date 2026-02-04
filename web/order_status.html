@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Status - Feedy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-emerald-600 text-white p-4 sticky top-0 z-30 shadow-md">
+        <div class="max-w-md mx-auto flex items-center justify-center">
+            <h1 class="text-xl font-bold">Order Status</h1>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto p-6">
+        <!-- Loading -->
+        <div id="loading" class="flex flex-col items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+            <p class="mt-4 text-gray-500">Locating your order...</p>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="hidden bg-red-50 p-4 rounded-lg text-red-700 text-center border border-red-200">
+            <p id="errorMsg">Order not found.</p>
+            <a href="#" id="errorBackBtn" class="mt-4 inline-block text-sm font-bold underline">Go Back to Menu</a>
+        </div>
+
+        <!-- Status Content -->
+        <div id="statusContent" class="hidden space-y-6">
+
+            <!-- Status Card -->
+            <div id="statusCard"
+                class="bg-white rounded-xl shadow-lg p-8 text-center border-t-4 border-orange-500 transition-colors duration-500">
+                <div id="statusIcon" class="text-6xl mb-4">🕒</div>
+                <h2 id="statusTitle" class="text-2xl font-bold text-gray-800 mb-2">Order Sent</h2>
+                <p id="statusDesc" class="text-gray-600">Your order is being prepared.</p>
+            </div>
+
+            <!-- Order Details -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <span class="text-gray-500 uppercase text-xs font-bold tracking-wider">Table</span>
+                    <span id="tableNum" class="text-xl font-bold text-gray-800">--</span>
+                </div>
+
+                <div class="space-y-3" id="itemsList">
+                    <!-- Items go here -->
+                </div>
+
+                <div class="mt-4 pt-4 border-t flex justify-between items-center">
+                    <span class="font-bold text-gray-800">Total</span>
+                    <span id="orderTotal" class="font-bold text-xl text-emerald-600">$0.00</span>
+                </div>
+            </div>
+
+            <!-- Action -->
+            <button id="orderMoreBtn"
+                class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition transform active:scale-95">
+                Order More Items
+            </button>
+
+            <p class="text-xs text-center text-gray-400 mt-4">Order ID: <span id="displayId"
+                    class="font-mono"></span></p>
+        </div>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // Firebase Configuration (Same as menu.html)
+        const firebaseConfig = {
+            apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
+            appId: '1:205492068242:web:04e1bd80de8974aa4eeb4b',
+            messagingSenderId: '205492068242',
+            projectId: 'feedy-cebf6',
+            authDomain: 'feedy-cebf6.firebaseapp.com',
+            storageBucket: 'feedy-cebf6.firebasestorage.app',
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('orderId');
+        const businessId = urlParams.get('businessId');
+
+        // Setup nav
+        const backUrl = `menu.html?businessId=${businessId || ''}`;
+        document.getElementById('orderMoreBtn').onclick = () => window.location.href = backUrl;
+        document.getElementById('errorBackBtn').href = backUrl;
+
+        if (!orderId) {
+            showError('No Order ID provided.');
+        } else {
+            // Listen to order updates in real-time
+            onSnapshot(doc(db, "orders", orderId), (doc) => {
+                document.getElementById('loading').classList.add('hidden');
+
+                if (!doc.exists()) {
+                    showError('Order not found or has been deleted.');
+                    return;
+                }
+
+                renderOrder(doc.data(), doc.id);
+            }, (error) => {
+                console.error(error);
+                showError('Error connecting to updates: ' + error.message);
+            });
+        }
+
+        function showError(msg) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('statusContent').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('errorMsg').textContent = msg;
+        }
+
+        function renderOrder(data, id) {
+            const container = document.getElementById('statusContent');
+            container.classList.remove('hidden');
+
+            document.getElementById('displayId').textContent = id.substring(0, 8);
+            document.getElementById('tableNum').textContent = data.tableNumber;
+            document.getElementById('orderTotal').textContent = '$' + data.totalAmount.toFixed(2);
+
+            // Render Items
+            const itemsDiv = document.getElementById('itemsList');
+            itemsDiv.innerHTML = '';
+            (data.items || []).forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between text-sm';
+                row.innerHTML = `
+                    <div class="flex items-start">
+                        <span class="font-bold bg-gray-100 px-2 rounded mr-2 h-6 flex items-center">${item.quantity}x</span>
+                        <span class="text-gray-700 pt-0.5">${item.name}</span>
+                    </div>
+                    <span class="text-gray-900 font-medium">$${item.total.toFixed(2)}</span>
+                `;
+                itemsDiv.appendChild(row);
+            });
+
+            // Update Status UI
+            updateStatusUI(data.status);
+        }
+
+        function updateStatusUI(status) {
+            const card = document.getElementById('statusCard');
+            const icon = document.getElementById('statusIcon');
+            const title = document.getElementById('statusTitle');
+            const desc = document.getElementById('statusDesc');
+
+            // Reset specific border colors
+            card.classList.remove('border-orange-500', 'border-green-500', 'border-red-500');
+
+            switch (status) {
+                case 'completed':
+                    card.classList.add('border-green-500');
+                    icon.textContent = '🎉';
+                    title.textContent = 'Order Ready!';
+                    desc.textContent = 'Your order is ready at the counter or being served.';
+                    title.className = 'text-2xl font-bold text-green-700 mb-2';
+                    break;
+                case 'rejected':
+                    card.classList.add('border-red-500');
+                    icon.textContent = '❌';
+                    title.textContent = 'Order Declined';
+                    desc.textContent = 'Sorry, we could not fulfill this order. Please wait for staff.';
+                    title.className = 'text-2xl font-bold text-red-700 mb-2';
+                    break;
+                default: // pending
+                    card.classList.add('border-orange-500');
+                    icon.textContent = '🕒';
+                    title.textContent = 'Order Sent';
+                    desc.textContent = 'Your order has been sent to the kitchen.';
+                    title.className = 'text-2xl font-bold text-orange-600 mb-2';
+                    break;
+            }
+        }
+    </script>
+</body>
+
+</html>

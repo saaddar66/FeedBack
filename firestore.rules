@@ -78,8 +78,10 @@ service cloud.firestore {
 
     // Orders - owner read/update/delete, public write (placing order)
     match /orders/{orderId} {
-      // Only owner can read their orders
-      allow read: if isOwner(resource.data.ownerId);
+      // Allow anyone (customer) to view a single order status if they have the ID
+      allow get: if true;
+      // Only owner can list all orders (dashboard)
+      allow list: if isOwner(resource.data.ownerId);
 
       // Public can place an order ONLY if data is valid
       allow create: if 

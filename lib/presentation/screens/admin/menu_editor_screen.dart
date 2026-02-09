@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:csv/csv.dart';
 import '../../providers/menu_provider.dart';
 import '../../../data/models/menu_models.dart';
@@ -280,95 +281,220 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
     final dishPriceController = TextEditingController(
       text: dish != null ? dish.price.toStringAsFixed(2) : '',
     );
+    // Track selected image file/bytes
+    FilePickerResult? _pickedImage;
+    String? _currentImageUrl = dish?.imageUrl;
+    final _dialogFormKey = GlobalKey<FormState>();
+    bool _isUploading = false; // Local state for dialog
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(dish == null ? 'Add Dish' : 'Edit Dish'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: dishNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Dish Name *',
-                  hintText: 'e.g., Margherita Pizza',
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(dish == null ? 'Add Dish' : 'Edit Dish'),
+            content: SingleChildScrollView(
+              child: Form(
+                key: _dialogFormKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Image Picker Section
+                    GestureDetector(
+                      onTap: () async {
+                         final result = await FilePicker.platform.pickFiles(
+                            type: FileType.image,
+                            allowMultiple: false,
+                            withData: true, // Need bytes for web/upload
+                         );
+                         if (result != null) {
+                           setState(() {
+                             _pickedImage = result;
+                           });
+                         }
+                      },
+                      child: Container(
+                        height: 120,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[400]!),
+                          image: _pickedImage != null && _pickedImage!.files.first.bytes != null
+                                ? DecorationImage(
+                                    image: MemoryImage(_pickedImage!.files.first.bytes!),
+                                    fit: BoxFit.cover,
+                                  )
+                                : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
+                                    ? DecorationImage(
+                                        image: NetworkImage(_currentImageUrl!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null),
+                        ),
+                        child: (_pickedImage == null && (_currentImageUrl == null || _currentImageUrl!.isEmpty))
+                            ? const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.camera_alt, size: 40, color: Colors.grey),
+                                  Text('Tap to add image', style: TextStyle(color: Colors.grey)),
+                                ],
+                              )
+                            : null,
+                      ),
+                    ),
+                    if (_pickedImage != null || (_currentImageUrl != null && _currentImageUrl!.isNotEmpty))
+                       Padding(
+                         padding: const EdgeInsets.only(top: 8),
+                         child: TextButton.icon(
+                            icon: const Icon(Icons.clear, size: 16),
+                            label: const Text('Remove Image', style: TextStyle(fontSize: 12)),
+                            onPressed: () {
+                               setState(() {
+                                 _pickedImage = null;
+                                 _currentImageUrl = null;
+                               });
+                            },
+                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                         ),
+                       ),
+                    
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: dishNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Dish Name *',
+                        hintText: 'e.g., Margherita Pizza',
+                        border: OutlineInputBorder(),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (val) => val == null || val.trim().isEmpty ? 'Name is required' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: dishDescController,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'e.g., Fresh mozzarella, tomato, basil',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: dishPriceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Price *',
+                        hintText: 'e.g., 12.99',
+                        prefixText: '\$ ',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      validator: (val) {
+                         if (val == null || val.trim().isEmpty) return 'Price is required';
+                         final price = double.tryParse(val.trim());
+                         if (price == null) return 'Invalid price';
+                         if (price <= 0) return 'Price must be greater than 0';
+                         return null;
+                      },
+                    ),
+                    if (_isUploading) ...[
+                       const SizedBox(height: 16),
+                       const LinearProgressIndicator(),
+                       const Text('Uploading image...', style: TextStyle(fontSize: 12)),
+                    ],
+                  ],
                 ),
-                textCapitalization: TextCapitalization.words,
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: dishDescController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'e.g., Fresh mozzarella, tomato, basil',
-                ),
-                maxLines: 2,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: dishPriceController,
-                decoration: const InputDecoration(
-                  labelText: 'Price',
-                  hintText: 'e.g., 12.99',
-                  prefixText: '\$ ',
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              TextButton(
+                onPressed: _isUploading ? null : () async {
+                  if (!_dialogFormKey.currentState!.validate()) return;
+                  
+                  setState(() => _isUploading = true);
+                  
+                  // Handle Image Upload if new image picked
+                  String? finalImageUrl = _currentImageUrl;
+                  
+                  if (_pickedImage != null && _pickedImage!.files.first.bytes != null) {
+                      try {
+                          final fileBytes = _pickedImage!.files.first.bytes!;
+                          final fileName = '${DateTime.now().millisecondsSinceEpoch}_${_pickedImage!.files.first.name}';
+                          // We need 'firebase_storage' package for this
+                          final storageRef = FirebaseStorage.instance
+                              .ref()
+                              .child('dishes')
+                              .child(fileName); // Simple path
+                          
+                          final metadata = SettableMetadata(
+                              contentType: 'image/jpeg', // Force jpeg or detect? mime_type in picker result usually
+                              customMetadata: {'uploaded_by': 'admin_app'},
+                          );
+
+                          // Upload
+                          // Note: This relies on firebase_storage import which we need to add to file imports
+                          await storageRef.putData(fileBytes, metadata);
+                          finalImageUrl = await storageRef.getDownloadURL();
+                          
+                      } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error uploading image: $e')),
+                          );
+                          setState(() => _isUploading = false);
+                          return;
+                      }
+                  }
+
+                  final price = double.parse(dishPriceController.text.trim());
+                  
+                  final updatedDish = MenuDish(
+                    id: dish?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: dishNameController.text.trim(),
+                    description: dishDescController.text.trim(),
+                    price: price,
+                    isAvailable: dish?.isAvailable ?? true,
+                    createdAt: dish?.createdAt,
+                    imageUrl: finalImageUrl,
+                  );
+
+                  final provider = context.read<MenuProvider>();
+
+                  if (index != null) {
+                    provider.updateDish(index, updatedDish);
+                  } else {
+                    provider.addDish(updatedDish);
+                  }
+
+                  // Update parent state is tricky from inside dialog if using setState of dialog
+                  // But 'provider' update is global state.
+                  // We just need to trigger rebuild of main screen.
+                  // The main screen rebuilds on 'setState' inside _saveMenuSection BUT
+                  // _showDishDialog calls setState on parent previously inside action.
+                  // Since we are async now, we can't easily access parent setState directly unless passed down 
+                  // or handled after await.
+                  // Actually, just calling provider methods updates the data object in provider.
+                  // We need to sync local _currentSection with provider.editingMenu.
+                  
+                  // Close dialog first
+                  if (context.mounted) Navigator.pop(context);
+                  
+                  // Then update parent UI
+                  this.setState(() {
+                      _currentSection = provider.editingMenu;
+                      _hasUnsavedChanges = true;
+                  });
+                },
+                child: const Text('Save'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final dishName = dishNameController.text.trim();
-              if (dishName.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Dish name is required')),
-                );
-                return;
-              }
-
-              // Parse price
-              double price = 0.0;
-              try {
-                price = double.parse(dishPriceController.text.trim());
-              } catch (e) {
-                // Keep price as 0.0 if parsing fails
-              }
-
-              final updatedDish = MenuDish(
-                id: dish?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                name: dishName,
-                description: dishDescController.text.trim(),
-                price: price,
-                isAvailable: dish?.isAvailable ?? true,
-                createdAt: dish?.createdAt,
-              );
-
-              final provider = context.read<MenuProvider>();
-
-              if (index != null) {
-                provider.updateDish(index, updatedDish);
-              } else {
-                provider.addDish(updatedDish);
-              }
-
-              setState(() {
-                _currentSection = provider.editingMenu;
-                _hasUnsavedChanges = true;
-              });
-
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

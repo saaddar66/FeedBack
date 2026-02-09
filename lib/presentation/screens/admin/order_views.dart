@@ -80,10 +80,60 @@ class _OrderListScreenState extends State<OrderListScreen> {
   }
 
   Future<void> _updateOrderStatus(String orderId, String newStatus) async {
+    String? rejectionReason;
+    
+    // If rejecting, ask for reason
+    if (newStatus == 'rejected') {
+      final reasonController = TextEditingController();
+      final shouldReject = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Reject Order'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Please provide a reason for rejecting this order:'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Reason',
+                  hintText: 'e.g., Sold out, Kitchen too busy',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Reject Order'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldReject != true) return;
+      rejectionReason = reasonController.text.trim();
+      if (rejectionReason.isEmpty) rejectionReason = 'No specific reason provided';
+    }
+
     try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+      final updateData = <String, dynamic>{
         'status': newStatus,
-      });
+      };
+      
+      if (rejectionReason != null) {
+        updateData['rejectionReason'] = rejectionReason;
+      }
+
+      await FirebaseFirestore.instance.collection('orders').doc(orderId).update(updateData);
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Order marked as $newStatus')),

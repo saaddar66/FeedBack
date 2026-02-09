@@ -6,6 +6,7 @@ class MenuDish {
   double price;
   bool isAvailable;
   final DateTime createdAt;
+  final String? imageUrl;
 
   MenuDish({
     required this.id,
@@ -14,6 +15,7 @@ class MenuDish {
     this.price = 0.0,
     this.isAvailable = true,
     DateTime? createdAt,
+    this.imageUrl,
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Creates a copy of the dish with updated values
@@ -22,6 +24,7 @@ class MenuDish {
     String? description,
     double? price,
     bool? isAvailable,
+    String? imageUrl,
   }) {
     return MenuDish(
       id: id,
@@ -30,6 +33,7 @@ class MenuDish {
       price: price ?? this.price,
       isAvailable: isAvailable ?? this.isAvailable,
       createdAt: createdAt,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 
@@ -42,6 +46,7 @@ class MenuDish {
       'price': price,
       'isAvailable': isAvailable,
       'createdAt': createdAt.toIso8601String(),
+      if (imageUrl != null) 'imageUrl': imageUrl,
     };
   }
 
@@ -73,6 +78,7 @@ class MenuDish {
       price: parsedPrice,
       isAvailable: parsedIsAvailable,
       createdAt: _parseDateTime(map['createdAt']),
+      imageUrl: map['imageUrl']?.toString(),
     );
   }
 

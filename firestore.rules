@@ -25,12 +25,16 @@ service cloud.firestore {
     // Menu sections - public read for active menus, owner write
     match /menu_sections/{menuId} {
       // Public can read active menus, owners can read all their menus
+      // Includes reading the 'imageUrl' if present in dishes
       allow read: if resource.data.isActive == true || 
                      isOwner(resource.data.ownerId);
       
       // Only owner can create/update their menus
+      // Validates ownerId is string. 'imageUrl' inside dishes is allowed (Map/List validation limited in rules)
       allow create: if isSignedIn() && 
-                       request.resource.data.ownerId == request.auth.uid;
+                       request.resource.data.ownerId == request.auth.uid &&
+                       request.resource.data.ownerId is string;
+
       allow update: if isOwner(resource.data.ownerId);
       
       // Only owner can delete their menus
@@ -97,8 +101,14 @@ service cloud.firestore {
         request.resource.data.items.size() > 0 && 
         request.resource.data.items.size() < 50; // Prevent spamming huge arrays
 
-      // Only owner (business) can update status (e.g. pending -> completed)
-      allow update, delete: if isOwner(resource.data.ownerId);
+      // Allow customer to update order ONLY if it is currently pending AND they are keeping it pending (i.e. just editing items)
+      // OR if it is the owner updating status
+      allow update: if 
+        (isOwner(resource.data.ownerId)) ||
+        (resource.data.status == 'pending' && request.resource.data.status == 'pending');
+
+      // Only owner (business) can delete
+      allow delete: if isOwner(resource.data.ownerId);
     }
   }
 }

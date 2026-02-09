@@ -64,6 +64,8 @@ dependencies:
   share_plus: ^7.2.1
   file_picker: ^10.3.10
   csv: ^6.0.0
+  image_picker: ^1.2.1
+  firebase_storage: ^13.0.6
 
 dev_dependencies:
   flutter_test:

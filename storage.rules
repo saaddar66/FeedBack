@@ -1,0 +1,31 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Dish images
+    match /dishes/{dishId} {
+      // Anyone can read images
+      allow read: if true;
+      
+      // Only admins/owners can upload
+      // Since we don't have a rigid admin system in rules yet, 
+      // we allow any authenticated user to upload (as they are likely the business owner in this context)
+      // or check if they are the owner of the path if structured that way.
+      // Simplify to authenticated for now as per "admins/owners" generally implies auth users in this MVP context.
+      allow write: if isSignedIn() && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Fallback logic
+    match /{allPaths=**} {
+      allow read, write: if false; 
+    }
+  }
+}

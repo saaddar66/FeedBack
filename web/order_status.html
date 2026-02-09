@@ -63,8 +63,8 @@
                 Order More Items
             </button>
 
-            <p class="text-xs text-center text-gray-400 mt-4">Order ID: <span id="displayId"
-                    class="font-mono"></span></p>
+            <p class="text-xs text-center text-gray-400 mt-4">Order ID: <span id="displayId" class="font-mono"></span>
+            </p>
         </div>
     </main>
 
@@ -145,10 +145,10 @@
             });
 
             // Update Status UI
-            updateStatusUI(data.status);
+            updateStatusUI(data.status, data);
         }
 
-        function updateStatusUI(status) {
+        function updateStatusUI(status, data) {
             const card = document.getElementById('statusCard');
             const icon = document.getElementById('statusIcon');
             const title = document.getElementById('statusTitle');
@@ -164,13 +164,23 @@
                     title.textContent = 'Order Ready!';
                     desc.textContent = 'Your order is ready at the counter or being served.';
                     title.className = 'text-2xl font-bold text-green-700 mb-2';
+                    document.getElementById('orderMoreBtn').classList.remove('hidden');
                     break;
                 case 'rejected':
                     card.classList.add('border-red-500');
                     icon.textContent = '❌';
                     title.textContent = 'Order Declined';
-                    desc.textContent = 'Sorry, we could not fulfill this order. Please wait for staff.';
+                    if (data.rejectionReason) {
+                        desc.innerHTML = `Sorry, we could not fulfill this order.<br><b>Reason:</b> ${data.rejectionReason}`;
+                    } else {
+                        desc.textContent = 'Sorry, we could not fulfill this order. Please wait for staff.';
+                    }
                     title.className = 'text-2xl font-bold text-red-700 mb-2';
+
+                    // Modify button to 'Order Again'
+                    const btn = document.getElementById('orderMoreBtn');
+                    btn.classList.remove('hidden');
+                    btn.textContent = 'Order Again';
                     break;
                 default: // pending
                     card.classList.add('border-orange-500');
@@ -178,6 +188,21 @@
                     title.textContent = 'Order Sent';
                     desc.textContent = 'Your order has been sent to the kitchen.';
                     title.className = 'text-2xl font-bold text-orange-600 mb-2';
+
+                    // Show Edit Button
+                    const editBtn = document.createElement('button');
+                    editBtn.id = 'editOrderBtn';
+                    editBtn.className = 'w-full bg-white border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50 font-bold py-3 px-6 rounded-lg shadow-sm transition mt-4';
+                    editBtn.textContent = 'Edit Order';
+                    editBtn.onclick = () => window.location.href = `menu.html?businessId=${businessId}&editOrderId=${orderId}`;
+
+                    // Insert after Status Card (if not already there)
+                    if (!document.getElementById('editOrderBtn')) {
+                        document.getElementById('statusCard').after(editBtn);
+                    }
+
+                    // Hide "Order More" while pending to avoid confusion/duplication
+                    document.getElementById('orderMoreBtn').classList.add('hidden');
                     break;
             }
         }

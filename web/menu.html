@@ -109,7 +109,7 @@
     <!-- Scripts -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, addDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, collection, getDocs, addDoc, updateDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: 'AIzaSyCLHJ6TQKyxKVr6P3PkptvIuH1xQxmHNjY',
@@ -125,6 +125,7 @@
         let cart = {};
         const urlParams = new URLSearchParams(window.location.search);
         let ownerId = urlParams.get('businessId') || urlParams.get('uid');
+        let editOrderId = urlParams.get('editOrderId');
 
         // Init
         async function init() {
@@ -137,9 +138,57 @@
 
             try {
                 await loadMenu();
+                if (editOrderId) {
+                    await loadOrderForEditing(editOrderId);
+                }
             } catch (e) {
                 showError(e.message);
             }
+        }
+
+        async function loadOrderForEditing(id) {
+            document.getElementById('loading').classList.remove('hidden');
+            const docRef = doc(db, 'orders', id);
+            const snap = await getDoc(docRef);
+
+            if (!snap.exists()) {
+                alert('Order not found');
+                return;
+            }
+
+            const data = snap.data();
+            if (data.status !== 'pending') {
+                alert('Cannot edit order that is not pending');
+                window.location.href = `order_status.html?orderId=${id}&businessId=${ownerId}`;
+                return;
+            }
+
+            // Pre-fill cart
+            data.items.forEach(item => {
+                cart[item.dishId] = {
+                    id: item.dishId,
+                    name: item.name,
+                    price: item.price,
+                    qty: item.quantity
+                };
+            });
+
+            // Pre-fill table number
+            document.getElementById('tableInput').value = data.tableNumber;
+
+            // Update UI for cart controls
+            Object.keys(cart).forEach(dishId => {
+                const container = document.getElementById(`ctrl-${dishId}`);
+                if (container) {
+                    updateControls(cart[dishId], container);
+                }
+            });
+
+            renderCartBar();
+            document.getElementById('loading').classList.add('hidden');
+
+            // Change checkout button text
+            document.getElementById('checkoutBtn').textContent = 'Update Order';
         }
 
         function showError(msg) {
@@ -190,13 +239,23 @@
         function createDishElement(dish) {
             const el = document.createElement('div');
             el.className = 'flex justify-between items-start py-4 border-b last:border-0 border-gray-100';
+
+            // Image Support
+            let imageHtml = '';
+            if (dish.imageUrl) {
+                imageHtml = `<img src="${dish.imageUrl}" class="w-20 h-20 rounded-lg object-cover mr-4" alt="${dish.name}">`;
+            }
+
             el.innerHTML = `
-        <div class="flex-1 pr-4">
-          <h3 class="font-bold text-gray-800 text-base">${dish.name}</h3>
-          <p class="text-sm text-gray-500 mt-1 line-clamp-2">${dish.description || ''}</p>
-          <p class="text-emerald-600 font-bold mt-2">$${parseFloat(dish.price).toFixed(2)}</p>
+        <div class="flex flex-1">
+            ${imageHtml}
+            <div class="flex-1 pr-4">
+              <h3 class="font-bold text-gray-800 text-base">${dish.name}</h3>
+              <p class="text-sm text-gray-500 mt-1 line-clamp-2">${dish.description || ''}</p>
+              <p class="text-emerald-600 font-bold mt-2">$${parseFloat(dish.price).toFixed(2)}</p>
+            </div>
         </div>
-        <div id="ctrl-${dish.id}" class="shrink-0"></div>
+        <div id="ctrl-${dish.id}" class="shrink-0 self-center"></div>
       `;
             // Init controls
             updateControls(dish, el.querySelector(`#ctrl-${dish.id}`));
@@ -244,6 +303,7 @@
 
             document.getElementById('cartCount').textContent = count;
             document.getElementById('cartTotal').textContent = '$' + total.toFixed(2);
+            if (editOrderId) document.getElementById('checkoutBtn').textContent = 'Update Order';
 
             const bar = document.getElementById('cartBar');
             if (count > 0) bar.classList.remove('hidden');
@@ -254,6 +314,11 @@
         const modal = document.getElementById('checkoutModal');
         document.getElementById('checkoutBtn').onclick = () => {
             modal.classList.remove('hidden');
+            // If editing, disable table edit
+            if (editOrderId) {
+                document.getElementById('tableInput').readOnly = true;
+                document.getElementById('tableInput').classList.add('bg-gray-100');
+            }
             setTimeout(() => document.getElementById('tableInput').focus(), 100);
         };
 
@@ -286,14 +351,26 @@
                 const total = orderItems.reduce((a, b) => a + b.total, 0);
 
                 // Redirect to status page
-                const docRef = await addDoc(collection(db, 'orders'), {
-                    ownerId,
-                    tableNumber: table,
-                    items: orderItems,
-                    totalAmount: total,
-                    status: 'pending',
-                    createdAt: serverTimestamp()
-                });
+                let targetId = editOrderId;
+
+                if (editOrderId) {
+                    await updateDoc(doc(db, 'orders', editOrderId), {
+                        items: orderItems,
+                        totalAmount: total,
+                        // Maintain status as pending
+                        status: 'pending'
+                    });
+                } else {
+                    const docRef = await addDoc(collection(db, 'orders'), {
+                        ownerId,
+                        tableNumber: table,
+                        items: orderItems,
+                        totalAmount: total,
+                        status: 'pending',
+                        createdAt: serverTimestamp()
+                    });
+                    targetId = docRef.id;
+                }
 
                 modal.classList.add('hidden');
 
@@ -302,7 +379,7 @@
                 renderCartBar();
 
                 // Redirect
-                window.location.href = `order_status.html?orderId=${docRef.id}&businessId=${ownerId}`;
+                window.location.href = `order_status.html?orderId=${targetId}&businessId=${ownerId}`;
 
             } catch (e) {
                 alert(e.message);

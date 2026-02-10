@@ -102,32 +102,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Handles logout with confirmation dialog
-  Future<void> _handleLogout() async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldLogout == true && mounted) {
-      context.read<AuthProvider>().logout();
-      context.go('/');
-    }
-  }
 
   /// Shows success message in green snackbar
   void _showSuccessSnackbar(String message) {
@@ -211,12 +185,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           
-          // Logout button
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _handleLogout,
-            tooltip: 'Logout',
-          ),
         ],
       ),
       

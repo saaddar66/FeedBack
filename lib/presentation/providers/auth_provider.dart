@@ -132,6 +132,14 @@ class AuthProvider with ChangeNotifier {
     required String businessName,
   }) async {
     try {
+      // 0. Check for existing business name or phone
+      if (await DatabaseHelper.instance.checkBusinessNameExists(businessName)) {
+        throw 'Business name already exists. Please choose another one.';
+      }
+      if (await DatabaseHelper.instance.checkPhoneExists(phone)) {
+        throw 'Phone number already linked to another account.';
+      }
+
       // 1. Create Auth User
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email, 
@@ -202,19 +210,40 @@ class AuthProvider with ChangeNotifier {
     super.dispose();
   }
 
-  /// Updates current user profile with name, email and phone
-  Future<void> updateUserProfile({String? name, String? email, String? phone}) async {
+  /// Updates current user profile with name, email, phone and business name
+  Future<void> updateUserProfile({String? name, String? email, String? phone, String? businessName}) async {
     if (_currentUser == null) return;
+    
+    // Check if new phone is unique (if changed)
+    if (phone != null && phone != _currentUser!.phone) {
+       if (await DatabaseHelper.instance.checkPhoneExists(phone)) {
+         throw 'Phone number already linked to another account.';
+       }
+    }
+
+    // Check if new business name is unique (if changed)
+    if (businessName != null && businessName != _currentUser!.businessName) {
+       if (await DatabaseHelper.instance.checkBusinessNameExists(businessName)) {
+         throw 'Business name already exists.';
+       }
+    }
     
     // Create updated user model
     final updatedUser = _currentUser!.copyWith(
       name: name ?? _currentUser!.name,
       email: email ?? _currentUser!.email,
       phone: phone ?? _currentUser!.phone,
+      businessName: businessName ?? _currentUser!.businessName,
     );
 
     // Update in database
     await DatabaseHelper.instance.updateUserProfile(updatedUser);
+    
+    // Update local preferences if business name changed
+    if (businessName != null && businessName != _currentUser!.businessName) {
+       final prefs = await SharedPreferences.getInstance();
+       await prefs.setString('last_active_business_name', businessName);
+    }
     
     // Sync to Firebase Auth if name/email changed
     try {

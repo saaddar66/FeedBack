@@ -151,8 +151,11 @@ class _OrderListScreenState extends State<OrderListScreen> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'pending': return Colors.orange;
+      case 'preparation': return Colors.blue;
+      case 'served': return Colors.purple;
       case 'completed': return Colors.green;
-      case 'rejected': return Colors.red;
+      case 'rejected': 
+      case 'cancelled': return Colors.red;
       default: return Colors.grey;
     }
   }
@@ -161,7 +164,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_showCompleted ? 'Order History' : 'Pending Orders'),
+        title: Text(_showCompleted ? 'Order History' : 'Active Orders'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/dashboard'),
@@ -169,7 +172,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
         actions: [
           TextButton.icon(
             icon: Icon(_showCompleted ? Icons.pending_actions : Icons.history),
-            label: Text(_showCompleted ? 'View Pending' : 'View History'),
+            label: Text(_showCompleted ? 'View Active' : 'View History'),
             onPressed: () {
               setState(() {
                 _showCompleted = !_showCompleted;
@@ -193,8 +196,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
           
           // Filter in memory based on tab
           final orders = allOrders.where((o) {
-            final isPending = o.status == 'pending';
-            return _showCompleted ? !isPending : isPending;
+            final isActive = ['pending', 'preparation', 'served'].contains(o.status.toLowerCase());
+            return _showCompleted ? !isActive : isActive;
           }).toList();
 
           if (orders.isEmpty) {
@@ -210,8 +213,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
                   const SizedBox(height: 16),
                   Text(
                     _showCompleted 
-                      ? 'No completed orders yet' 
-                      : 'No pending orders',
+                      ? 'No order history yet' 
+                      : 'No active orders',
                     style: TextStyle(fontSize: 18, color: Colors.grey[500]),
                   ),
                 ],
@@ -224,13 +227,15 @@ class _OrderListScreenState extends State<OrderListScreen> {
             itemCount: orders.length,
             itemBuilder: (context, index) {
               final order = orders[index];
+              final status = order.status.toLowerCase();
+              
               return Card(
                 elevation: 3,
                 margin: const EdgeInsets.only(bottom: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
-                    color: order.status == 'pending' ? Colors.orange.withOpacity(0.5) : Colors.transparent, 
+                    color: status == 'pending' ? Colors.orange.withOpacity(0.5) : Colors.transparent, 
                     width: 1
                   ),
                 ),
@@ -266,15 +271,15 @@ class _OrderListScreenState extends State<OrderListScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: _getStatusColor(order.status).withOpacity(0.1),
+                              color: _getStatusColor(status).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              order.status.toUpperCase(),
+                              status.toUpperCase(),
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
-                                color: _getStatusColor(order.status),
+                                color: _getStatusColor(status),
                               ),
                             ),
                           ),
@@ -355,8 +360,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
                       
                       const SizedBox(height: 16),
                       
-                      // Action Buttons Row (Reject in "Total's space" - left side)
-                      if (order.status == 'pending')
+                      // Action Buttons Row
+                      if (status == 'pending')
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -370,15 +375,43 @@ class _OrderListScreenState extends State<OrderListScreen> {
                               ),
                             ),
                             ElevatedButton.icon(
-                              onPressed: () => _updateOrderStatus(order.id, 'completed'),
-                              icon: const Icon(Icons.check, size: 18),
-                              label: const Text('Complete'),
+                              onPressed: () => _updateOrderStatus(order.id, 'preparation'),
+                              icon: const Icon(Icons.outdoor_grill, size: 18),
+                              label: const Text('Start Preparation'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
+                                backgroundColor: Colors.blue,
                                 foregroundColor: Colors.white,
                               ),
                             ),
                           ],
+                        ),
+                        
+                      if (status == 'preparation')
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _updateOrderStatus(order.id, 'served'),
+                            icon: const Icon(Icons.room_service, size: 18),
+                            label: const Text('Mark as Served'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+
+                      if (status == 'served')
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _updateOrderStatus(order.id, 'completed'),
+                            icon: const Icon(Icons.check_circle, size: 18),
+                            label: const Text('Mark as Completed'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
                         ),
                     ],
                   ),

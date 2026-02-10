@@ -31,7 +31,10 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadResponses();
+    // Initial load attempt - deferred to next frame to avoid 'setState during build' error
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadResponses();
+    });
   }
 
   /// Loads survey responses and builds question title cache
@@ -351,51 +354,19 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
           onPressed: () => context.go('/dashboard'),
         ),
         actions: [
-          // Filter button
+          // Filter & Sort button
           if (!_isLoading)
             IconButton(
               icon: Icon(
                 Icons.filter_list,
-                color: _selectedSurveyId != null ? Colors.blue : null,
+                color: (_selectedSurveyId != null || _currentSortOrder != SortOrder.newest) 
+                    ? Colors.blue 
+                    : null,
               ),
               onPressed: _showFilterDialog,
-              tooltip: 'Filter by Survey',
+              tooltip: 'Filter & Sort',
             ),
-          // Sort button
-          if (!_isLoading)
-            PopupMenuButton<SortOrder>(
-              icon: const Icon(Icons.sort),
-              tooltip: 'Sort Responses',
-              initialValue: _currentSortOrder,
-              onSelected: (SortOrder item) {
-                setState(() {
-                  _currentSortOrder = item;
-                });
-              },
-              itemBuilder: (BuildContext context) => <PopupMenuEntry<SortOrder>>[
-                const PopupMenuItem<SortOrder>(
-                  value: SortOrder.newest,
-                  child: Row(
-                    children: [
-                      Icon(Icons.arrow_downward, size: 20),
-                      SizedBox(width: 8),
-                      Text('Newest First'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem<SortOrder>(
-                  value: SortOrder.oldest,
-                  child: Row(
-                    children: [
-                      Icon(Icons.arrow_upward, size: 20),
-                      SizedBox(width: 8),
-                      Text('Oldest First'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          // AI Analyze button
+
             if (!_isLoading && responses.isNotEmpty)
               IconButton(
                 icon: Icon(Icons.auto_awesome, color: Colors.purple.shade300),
@@ -687,7 +658,7 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
     return stringValue.isEmpty ? 'No answer' : stringValue;
   }
 
-  /// Shows filter dialog to select a survey
+  /// Shows filter and sort dialog
   void _showFilterDialog() {
     final surveys = context.read<FeedbackProvider>().surveys;
     
@@ -698,9 +669,9 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
+        builder: (context, setModalState) => Container(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
             left: 24,
             right: 24,
             top: 24,
@@ -710,51 +681,99 @@ class _SurveyResponseListScreenState extends State<SurveyResponseListScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Filter Options',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Filter & Sort',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    if (_selectedSurveyId != null || _currentSortOrder != SortOrder.newest)
+                      TextButton(
+                        onPressed: () {
+                          setModalState(() {
+                            _selectedSurveyId = null;
+                            _currentSortOrder = SortOrder.newest;
+                          });
+                          setState(() {
+                            _selectedSurveyId = null;
+                            _currentSortOrder = SortOrder.newest;
+                          });
+                        },
+                        child: const Text('Clear All'),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 24),
+                
+                // Sort Section
+                const Text('Sort by Date', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                RadioListTile<SortOrder>(
+                  title: const Text('Newest First'),
+                  value: SortOrder.newest,
+                  groupValue: _currentSortOrder,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (SortOrder? value) {
+                    if (value != null) {
+                      setModalState(() => _currentSortOrder = value);
+                      setState(() => _currentSortOrder = value);
+                    }
+                  },
+                ),
+                RadioListTile<SortOrder>(
+                  title: const Text('Oldest First'),
+                  value: SortOrder.oldest,
+                  groupValue: _currentSortOrder,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (SortOrder? value) {
+                    if (value != null) {
+                      setModalState(() => _currentSortOrder = value);
+                      setState(() => _currentSortOrder = value);
+                    }
+                  },
+                ),
+                const Divider(height: 32),
                 
                 // Filter by survey section
                 const Text('Filter by Survey', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 
-                // All Surveys option
-                ChoiceChip(
-                  label: const Text('All Surveys'),
-                  selected: _selectedSurveyId == null,
-                  onSelected: (selected) {
-                    setModalState(() => _selectedSurveyId = null);
-                    setState(() => _selectedSurveyId = null);
-                  },
-                ),
-                const SizedBox(height: 8),
-                
-                // Individual survey options
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: surveys.map((survey) => ChoiceChip(
-                    label: Text(
-                      survey.title,
-                      overflow: TextOverflow.ellipsis,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('All Surveys'),
+                      selected: _selectedSurveyId == null,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setModalState(() => _selectedSurveyId = null);
+                          setState(() => _selectedSurveyId = null);
+                        }
+                      },
                     ),
-                    selected: _selectedSurveyId == survey.id,
-                    onSelected: (selected) {
-                      setModalState(() => _selectedSurveyId = survey.id);
-                      setState(() => _selectedSurveyId = survey.id);
-                    },
-                  )).toList(),
+                    ...surveys.map((survey) => ChoiceChip(
+                      label: Text(
+                        survey.title,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: _selectedSurveyId == survey.id,
+                      onSelected: (selected) {
+                        setModalState(() => _selectedSurveyId = selected ? survey.id : null);
+                        setState(() => _selectedSurveyId = selected ? survey.id : null);
+                      },
+                    )).toList(),
+                  ],
                 ),
                 const SizedBox(height: 24),
                 
-                // Apply button
+                // Done button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Apply'),
+                    child: const Text('Done'),
                   ),
                 ),
               ],

@@ -151,8 +151,8 @@ class FeedbackRepository {
   }
 
   /// Retrieves all survey responses, optionally filtered by ownerId
-  Future<List<Map<String, dynamic>>> getSurveyResponses({String? ownerId}) async {
-    return await _databaseHelper.getAllSurveyResponses(ownerId: ownerId);
+  Future<List<Map<String, dynamic>>> getSurveyResponses({String? ownerId, int limit = 100}) async {
+    return await _databaseHelper.getAllSurveyResponses(ownerId: ownerId, limit: limit);
   }
 
   /// Deletes a specific feedback entry

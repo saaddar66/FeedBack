@@ -60,6 +60,18 @@ class DatabaseHelper implements BaseDatabase {
   }
 
   @override
+  Future<bool> checkBusinessNameExists(String businessName) {
+    _checkConfig();
+    return _db.checkBusinessNameExists(businessName);
+  }
+
+  @override
+  Future<bool> checkPhoneExists(String phone) {
+    _checkConfig();
+    return _db.checkPhoneExists(phone);
+  }
+
+  @override
   Future<String> insertFeedback(FeedbackModel feedback) {
     _checkConfig();
     return _db.insertFeedback(feedback);
@@ -188,9 +200,9 @@ class DatabaseHelper implements BaseDatabase {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId}) {
+  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId, int limit = 100}) {
     _checkConfig();
-    return _db.getAllSurveyResponses(ownerId: ownerId);
+    return _db.getAllSurveyResponses(ownerId: ownerId, limit: limit);
   }
 
   @override

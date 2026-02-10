@@ -68,6 +68,38 @@ class FirestoreDatabaseImpl implements BaseDatabase {
   }
 
   @override
+  Future<bool> checkBusinessNameExists(String businessName) async {
+    await _ensureInitialized();
+    try {
+      final query = await _firestore!
+          .collection('users')
+          .where('businessName', isEqualTo: businessName)
+          .limit(1)
+          .get();
+      return query.docs.isNotEmpty;
+    } catch (e) {
+      developer.log('Error checking business name: $e', name: 'FirestoreDatabaseImpl');
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> checkPhoneExists(String phone) async {
+    await _ensureInitialized();
+    try {
+      final query = await _firestore!
+          .collection('users')
+          .where('phone', isEqualTo: phone)
+          .limit(1)
+          .get();
+      return query.docs.isNotEmpty;
+    } catch (e) {
+       developer.log('Error checking phone: $e', name: 'FirestoreDatabaseImpl');
+       return false;
+    }
+  }
+
+  @override
   Future<String> insertFeedback(FeedbackModel feedback) async {
     await _ensureInitialized();
     
@@ -446,7 +478,8 @@ class FirestoreDatabaseImpl implements BaseDatabase {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId}) async {
+  @override
+  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId, int limit = 100}) async {
     await _ensureInitialized();
     
     try {
@@ -455,6 +488,12 @@ class FirestoreDatabaseImpl implements BaseDatabase {
       if (ownerId != null) {
         query = query.where('owner_id', isEqualTo: ownerId);
       }
+      
+      // Sort by newest first (server-side)
+      query = query.orderBy('submittedAt', descending: true);
+      
+      // Apply limit
+      query = query.limit(limit);
       
       final snapshot = await query.get();
       
@@ -473,6 +512,9 @@ class FirestoreDatabaseImpl implements BaseDatabase {
       
       return responses;
     } catch (e) {
+      if (e.toString().contains('FAILED_PRECONDITION')) {
+        developer.log('MISSING INDEX: Visit the link in the console to create required composite index', name: 'FirestoreDatabaseImpl');
+      }
       developer.log('Error fetching survey responses: $e', name: 'FirestoreDatabaseImpl', error: e);
       return [];
     }

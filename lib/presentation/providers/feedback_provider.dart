@@ -107,10 +107,16 @@ class FeedbackProvider with ChangeNotifier {
 
   /// Sets the current user context and reloads data
   void setCurrentUser(String? userId) {
+    if (_currentUserId == userId) return; // Prevent redundant calls
+    
     print('FeedbackProvider: Setting current user to: $userId');
     _currentUserId = userId;
-    loadSurveys();
-    loadFeedback();
+    
+    // Defer loading to avoid "setState() or markNeedsBuild() called during build"
+    Future.microtask(() {
+      loadSurveys();
+      loadFeedback();
+    });
   }
 
   /// Loads all surveys
@@ -265,7 +271,7 @@ class FeedbackProvider with ChangeNotifier {
 
   /// Loads all survey responses for the current user
   Future<void> loadSurveyResponses() async {
-    _surveyResponses = await _repository.getSurveyResponses(ownerId: _currentUserId);
+    _surveyResponses = await _repository.getSurveyResponses(ownerId: _currentUserId, limit: 100);
     notifyListeners();
   }
 

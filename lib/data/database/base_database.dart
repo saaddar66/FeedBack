@@ -9,6 +9,10 @@ abstract class BaseDatabase {
   Future<void> createUserProfile(UserModel user);
   Future<UserModel?> getUserProfile(String uid);
   Future<void> updateUserProfile(UserModel user);
+  
+  // Checks if a user already exists with the given business name or phone
+  Future<bool> checkBusinessNameExists(String businessName);
+  Future<bool> checkPhoneExists(String phone);
 
   // Feedback
   Future<String> insertFeedback(FeedbackModel feedback);
@@ -53,6 +57,6 @@ abstract class BaseDatabase {
 
   // Survey Responses
   Future<void> submitSurveyResponse(Map<String, dynamic> answers, {String? ownerId});
-  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId});
+  Future<List<Map<String, dynamic>>> getAllSurveyResponses({String? ownerId, int limit = 100});
   Future<void> deleteSurveyResponse(String id);
 }

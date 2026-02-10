@@ -18,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _businessNameController;
   
   bool _isSaving = false;
   bool _isLoading = true;
@@ -31,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _originalName = '';
   String _originalEmail = '';
   String _originalPhone = '';
+  String _originalBusinessName = '';
 
   @override
   void initState() {
@@ -38,11 +40,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController = TextEditingController();
     _emailController = TextEditingController();
     _phoneController = TextEditingController();
+    _businessNameController = TextEditingController();
     
     // Add listeners to detect changes
     _nameController.addListener(_checkForChanges);
     _emailController.addListener(_checkForChanges);
     _phoneController.addListener(_checkForChanges);
+    _businessNameController.addListener(_checkForChanges);
     
     _loadUserProfile();
   }
@@ -53,11 +57,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController.removeListener(_checkForChanges);
     _emailController.removeListener(_checkForChanges);
     _phoneController.removeListener(_checkForChanges);
+    _businessNameController.removeListener(_checkForChanges);
     
     // Dispose controllers
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _businessNameController.dispose();
     super.dispose();
   }
 
@@ -76,10 +82,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _originalName = user.name ?? '';
         _originalEmail = user.email ?? '';
         _originalPhone = user.phone ?? '';
+        _originalBusinessName = user.businessName ?? '';
         
         _nameController.text = _originalName;
         _emailController.text = _originalEmail;
         _phoneController.text = _originalPhone;
+        _businessNameController.text = _originalBusinessName;
       }
       
       // Simulate API delay for demo purposes
@@ -107,7 +115,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _checkForChanges() {
     final hasChanges = _nameController.text != _originalName ||
                        _emailController.text != _originalEmail ||
-                       _phoneController.text != _originalPhone;
+                       _phoneController.text != _originalPhone ||
+                       _businessNameController.text != _originalBusinessName;
     
     if (hasChanges != _hasUnsavedChanges) {
       setState(() => _hasUnsavedChanges = hasChanges);
@@ -134,12 +143,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
         phone: _phoneController.text.trim(),
+        businessName: _businessNameController.text.trim(),
       );
       
       // Update original values after successful save
       _originalName = _nameController.text.trim();
       _originalEmail = _emailController.text.trim();
       _originalPhone = _phoneController.text.trim();
+      _originalBusinessName = _businessNameController.text.trim();
       
       if (mounted) {
         setState(() {
@@ -186,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController.text = _originalName;
     _emailController.text = _originalEmail;
     _phoneController.text = _originalPhone;
+    _businessNameController.text = _originalBusinessName;
     setState(() => _hasUnsavedChanges = false);
     _showSuccessSnackbar('Changes discarded');
   }
@@ -430,6 +442,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
+
+                // Business Name input
+                TextFormField(
+                  controller: _businessNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Business Name',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.store),
+                    helperText: 'Your business or brand name',
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  enabled: !_isSaving,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your business name';
+                    }
+                    if (value.trim().length < 2) {
+                      return 'Business name must be at least 2 characters';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
                 
                 // Email input with improved regex validation
                 TextFormField(
@@ -541,11 +576,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 
                 const SizedBox(height: 16),
+                const SizedBox(height: 16),
+                
+                // Logout Button
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.logout, color: Colors.red),
+                    label: const Text('Logout', style: TextStyle(color: Colors.red)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: Colors.red),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// Handles logout with confirmation dialog
+  Future<void> _handleLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true && mounted) {
+      context.read<AuthProvider>().logout();
+      context.go('/');
+    }
   }
 }
